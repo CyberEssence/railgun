@@ -1,5 +1,7 @@
 # Сodename: Railgun
 
+![RAILGUN](https://github.com/CyberEssence/railgun/blob/main/R_A_I_L_G_U_N.png)
+
 SIEM которая идентифицирует атаки с помощью AI, а также может атаковать APT в ответ на их атаки
 
 У этой SIEM будет три слоя:
