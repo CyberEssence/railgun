@@ -14,7 +14,8 @@ export const TrafficMonitor = () => {
         const response = await axios.get(`/api/traffic/host/${hostId}`);
         setTrafficData(response.data);
       } catch (error) {
-        console.error('Error fetching traffic data:', error);
+        console.error('Ошибка при загрузке данных трафика:', error);
+        alert('Ошибка при загрузке данных трафика: ' + error.message);
       } finally {
         setLoading(false);
       }
