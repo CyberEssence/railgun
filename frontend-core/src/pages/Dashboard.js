@@ -27,6 +27,7 @@ export const Dashboard = () => {
         setStats(response.data);
       } catch (error) {
         console.error('Ошибка загрузки статистики:', error);
+        alert('Ошибка при загрузке статистики: ' + error.message);
       }
     };
 
