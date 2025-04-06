@@ -17,7 +17,8 @@ export const ArtifactExplorer = () => {
         });
         setArtifacts(response.data);
       } catch (error) {
-        console.error('Error fetching artifacts:', error);
+        console.error('Ошибка при загрузке артефактов: ', error);
+        alert('Ошибка при загрузке артефактов: ' + error.message);
       } finally {
         setLoading(false);
       }
