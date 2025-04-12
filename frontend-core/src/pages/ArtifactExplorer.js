@@ -11,7 +11,11 @@ import {
   TableHead, 
   TableRow,
   CircularProgress,
-  Alert
+  Alert,
+  MenuItem,
+  Select,
+  FormControl,
+  InputLabel
 } from '@mui/material';
 
 export const ArtifactExplorer = () => {
@@ -20,6 +24,13 @@ export const ArtifactExplorer = () => {
   const [artifactType, setArtifactType] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  
+  const artifactTypes = [
+    { value: '', label: 'All Types' },
+    { value: 'registry', label: 'Registry' },
+    { value: 'file', label: 'File' },
+    { value: 'process', label: 'Process' }
+  ];
 
   useEffect(() => {
     const fetchArtifacts = async () => {
@@ -31,13 +42,13 @@ export const ArtifactExplorer = () => {
       setLoading(true);
       setError(null);
       try {
-        const url = `http://localhost:8080/api/artifacts/host/${hostId}${artifactType ? `?type=${artifactType}` : ''}`;
+        const url = `/api/artifacts/host/${hostId}${artifactType ? `?type=${artifactType}` : ''}`;
         const response = await fetch(url);
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
         const data = await response.json();
-        // Обработка случая, когда data = null
+        // Handle case when data = null
         setArtifacts(Array.isArray(data) ? data : []);
       } catch (err) {
         setError(err.message);
@@ -55,6 +66,20 @@ export const ArtifactExplorer = () => {
     return () => clearTimeout(timer);
   }, [hostId, artifactType]);
 
+  const formatValue = (value) => {
+    if (value === null || value === undefined) return '-';
+    
+    if (typeof value === 'object') {
+      try {
+        return JSON.stringify(value);
+      } catch (e) {
+        return String(value);
+      }
+    }
+    
+    return String(value);
+  };
+
   return (
     <Box sx={{ p: 3 }}>
       <Typography variant="h4" gutterBottom>
@@ -70,14 +95,22 @@ export const ArtifactExplorer = () => {
           margin="normal"
           placeholder="Enter host identifier"
         />
-        <TextField
-          fullWidth
-          label="Artifact Type"
-          value={artifactType}
-          onChange={(e) => setArtifactType(e.target.value)}
-          margin="normal"
-          placeholder="e.g. registry, file, process"
-        />
+        
+        <FormControl fullWidth margin="normal">
+          <InputLabel id="artifact-type-label">Artifact Type</InputLabel>
+          <Select
+            labelId="artifact-type-label"
+            value={artifactType}
+            onChange={(e) => setArtifactType(e.target.value)}
+            label="Artifact Type"
+          >
+            {artifactTypes.map(option => (
+              <MenuItem key={option.value} value={option.value}>
+                {option.label}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
       </Paper>
 
       {error && (
@@ -100,6 +133,7 @@ export const ArtifactExplorer = () => {
                 <TableCell>Path</TableCell>
                 <TableCell>Value</TableCell>
                 <TableCell>Size</TableCell>
+                <TableCell>Owner</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -112,16 +146,17 @@ export const ArtifactExplorer = () => {
                     <TableCell>{artifact.type || '-'}</TableCell>
                     <TableCell>{artifact.path || '-'}</TableCell>
                     <TableCell>
-                      {artifact.value || '-'}
+                      {formatValue(artifact.value)}
                     </TableCell>
                     <TableCell>
                       {artifact.size ? `${artifact.size} bytes` : '-'}
                     </TableCell>
+                    <TableCell>{artifact.owner || '-'}</TableCell>
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={5} align="center">
+                  <TableCell colSpan={6} align="center">
                     {hostId ? 'No artifacts found' : 'Enter host ID to search'}
                   </TableCell>
                 </TableRow>

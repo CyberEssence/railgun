@@ -11,7 +11,7 @@ import (
 	"railgun-core/services"
 )
 
-func RegisterRoutes(r *gin.Engine, trafficSvc *services.TrafficService, artifactSvc *services.ArtifactService) {
+func RegisterRoutes(r *gin.Engine, trafficSvc *services.TrafficServiceImpl, artifactSvc *services.ArtifactService) {
 	api := r.Group("/api")
 
 	// Traffic endpoints

@@ -7,6 +7,14 @@ import (
 	"github.com/uptrace/bun"
 )
 
+type TrafficStats struct {
+	TotalBytesSent   int64   `json:"total_bytes_sent"`
+	TotalBytesRecv   int64   `json:"total_bytes_recv"`
+	TotalPacketsSent int64   `json:"total_packets_sent"`
+	TotalPacketsRecv int64   `json:"total_packets_recv"`
+	AverageDuration  float64 `json:"average_duration"`
+}
+
 // Event представляет собой базовое событие в системе
 type Event struct {
 	bun.BaseModel `bun:"table:events,alias:e"`

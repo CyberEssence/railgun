@@ -95,6 +95,8 @@ func (s *ArtifactService) SaveArtifact(ctx context.Context, artifact models.Wind
 }
 
 // SearchArtifacts ищет артефакты по заданным критериям
+// Fixed SearchArtifacts method
+// SearchArtifacts ищет артефакты по заданным критериям
 func (s *ArtifactService) SearchArtifacts(ctx context.Context, query string) ([]models.WindowsArtifact, error) {
 	esQuery := map[string]interface{}{
 		"query": map[string]interface{}{
@@ -110,7 +112,7 @@ func (s *ArtifactService) SearchArtifacts(ctx context.Context, query string) ([]
 		return nil, err
 	}
 
-	// Создаем io.Reader из []byte
+	// Create io.Reader from []byte
 	queryReader := bytes.NewReader(queryBytes)
 
 	res, err := s.elastic.Search(
@@ -124,7 +126,11 @@ func (s *ArtifactService) SearchArtifacts(ctx context.Context, query string) ([]
 	defer res.Body.Close()
 
 	if res.IsError() {
-		return nil, fmt.Errorf("elasticsearch error: %s", res.String())
+		var e map[string]interface{}
+		if err := json.NewDecoder(res.Body).Decode(&e); err != nil {
+			return nil, fmt.Errorf("error parsing elasticsearch error: %s", err)
+		}
+		return nil, fmt.Errorf("elasticsearch error: %v", e)
 	}
 
 	var result struct {
