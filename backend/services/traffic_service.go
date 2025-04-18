@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
+	"strings"
 	"time"
 
 	"github.com/elastic/go-elasticsearch/v8"
@@ -34,6 +36,14 @@ func NewTrafficService(db *bun.DB, elasticURL string) *TrafficServiceImpl {
 		panic(fmt.Sprintf("Error creating Elasticsearch client: %s", err))
 	}
 
+	_, err = es.Indices.Create("network-traffic")
+	if err != nil {
+		// Игнорируем ошибку, если индекс уже существует
+		if !strings.Contains(err.Error(), "resource_already_exists_exception") {
+			panic(fmt.Sprintf("Error creating Elasticsearch index: %s", err))
+		}
+	}
+
 	return &TrafficServiceImpl{
 		db:      db,
 		elastic: es,
@@ -53,21 +63,24 @@ func (s *TrafficServiceImpl) GetTrafficByHost(ctx context.Context, hostID string
 
 func (s *TrafficServiceImpl) GetTrafficStats(ctx context.Context, hostID string, from, to time.Time) (models.TrafficStats, error) {
 	stats := models.TrafficStats{}
-	query := fmt.Sprintf(`
-        SELECT 
-            COALESCE(SUM(bytes_sent), 0) as total_bytes_sent,
-            COALESCE(SUM(bytes_recv), 0) as total_bytes_recv,
-            COALESCE(SUM(packets_sent), 0) as total_packets_sent,
-            COALESCE(SUM(packets_recv), 0) as total_packets_recv,
-            COALESCE(AVG(duration), 0) as average_duration
-        FROM network_traffic
-        WHERE host_id = $1 AND timestamp BETWEEN $2 AND $3
-    `)
-	err := s.db.QueryRowContext(ctx, query, hostID, from, to).
-		Scan(&stats.TotalBytesSent, &stats.TotalBytesRecv,
-			&stats.TotalPacketsSent, &stats.TotalPacketsRecv,
-			&stats.AverageDuration)
-	return stats, err
+	query := `SELECT 
+        COALESCE(SUM(bytes_sent), 0) as total_bytes_sent,
+        COALESCE(SUM(bytes_recv), 0) as total_bytes_recv,
+        COALESCE(SUM(packets_sent), 0) as total_packets_sent,
+        COALESCE(SUM(packets_recv), 0) as total_packets_recv,
+        COALESCE(AVG(duration), 0) as average_duration
+    FROM network_traffic
+    WHERE host_id = ? AND timestamp BETWEEN ? AND ?`
+
+	// Используем Bun для выполнения запроса
+	err := s.db.NewRaw(query, hostID, from, to).Scan(ctx, &stats)
+
+	if err != nil {
+		log.Printf("Query failed: %v", err)
+		return stats, fmt.Errorf("query failed: %w", err)
+	}
+
+	return stats, nil
 }
 
 // SaveTraffic сохраняет новую запись о трафике

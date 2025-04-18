@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/elastic/go-elasticsearch/v8"
@@ -26,6 +27,14 @@ func NewArtifactService(db *bun.DB, elasticURL string) *ArtifactService {
 	es, err := elasticsearch.NewClient(cfg)
 	if err != nil {
 		panic(fmt.Sprintf("Error creating Elasticsearch client: %s", err))
+	}
+
+	_, err = es.Indices.Create("windows-artifacts")
+	if err != nil {
+		// Игнорируем ошибку, если индекс уже существует
+		if !strings.Contains(err.Error(), "resource_already_exists_exception") {
+			panic(fmt.Sprintf("Error creating Elasticsearch index: %s", err))
+		}
 	}
 
 	return &ArtifactService{

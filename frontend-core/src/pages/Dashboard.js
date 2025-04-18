@@ -35,42 +35,35 @@ export const Dashboard = () => {
   const [hostId, setHostId] = useState('');
   const navigate = useNavigate();
 
-  useEffect(() => {
-    fetchDashboardData();
-  }, [hostId]);
-
   const fetchDashboardData = async () => {
     setLoading(true);
     setError(null);
-    
     try {
-      // Get main statistics
-      const response = await fetch('/api/dashboard/stats');
+      const response = await fetch('http://localhost:8080/api/dashboard/stats');
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorText = await response.text();
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
       }
       const dashboardData = await response.json();
+      setStats(dashboardData);
       
-      // If hostId is specified, get detailed statistics
       if (hostId) {
-        const trafficResponse = await fetch(`/api/traffic/stats/host/${hostId}`);
+        // Add date range parameters (e.g., last 7 days)
+        const to = new Date();
+        const from = new Date();
+        from.setDate(from.getDate() - 7);
+        
+        const trafficResponse = await fetch(
+          `http://localhost:8080/api/traffic/stats/host/${hostId}?from=${from.toISOString()}&to=${to.toISOString()}`
+        );
+        
         if (!trafficResponse.ok) {
-          throw new Error(`HTTP error! status: ${trafficResponse.status}`);
+          const errorText = await trafficResponse.text();
+          throw new Error(`HTTP error! status: ${trafficResponse.status}, message: ${errorText}`);
         }
         const trafficData = await trafficResponse.json();
-        setTrafficStats(trafficData);
-      } else {
-        setTrafficStats({
-          total_bytes_sent: 0,
-          total_bytes_recv: 0,
-          total_packets_sent: 0,
-          total_packets_recv: 0,
-          by_protocol: {},
-          traffic_over_time: []
-        });
+        setTrafficStats(trafficData);  // Fixed typo here
       }
-      
-      setStats(dashboardData);
     } catch (err) {
       setError(err.message);
       console.error('Error fetching dashboard data:', err);
@@ -78,6 +71,11 @@ export const Dashboard = () => {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, [hostId]);
+
 
   const handleNavigate = (path) => {
     navigate(path);

@@ -42,13 +42,20 @@ export const ArtifactExplorer = () => {
       setLoading(true);
       setError(null);
       try {
-        const url = `/api/artifacts/host/${hostId}${artifactType ? `?type=${artifactType}` : ''}`;
+        const url = `http://localhost:8080/api/artifacts/host/${hostId}${artifactType ? `?type=${artifactType}` : ''}`;
         const response = await fetch(url);
+        
         if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
+          const errorText = await response.text();
+          throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
         }
+        
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          throw new Error(`Invalid response format: ${contentType}`);
+        }
+        
         const data = await response.json();
-        // Handle case when data = null
         setArtifacts(Array.isArray(data) ? data : []);
       } catch (err) {
         setError(err.message);

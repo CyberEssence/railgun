@@ -31,11 +31,18 @@ export const TrafficMonitor = () => {
       setError(null);
       try {
         const response = await fetch(`http://localhost:8080/api/traffic/host/${hostId}`);
+        
         if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
+          const errorText = await response.text();
+          throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
         }
+        
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          throw new Error(`Invalid response format: ${contentType}`);
+        }
+        
         const data = await response.json();
-        // Обработка случая, когда data = null
         setTrafficData(Array.isArray(data) ? data : []);
       } catch (err) {
         setError(err.message);

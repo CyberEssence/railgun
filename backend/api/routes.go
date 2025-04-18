@@ -6,12 +6,13 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/uptrace/bun"
 
 	"railgun-core/models"
 	"railgun-core/services"
 )
 
-func RegisterRoutes(r *gin.Engine, trafficSvc *services.TrafficServiceImpl, artifactSvc *services.ArtifactService) {
+func RegisterRoutes(r *gin.Engine, db *bun.DB, trafficSvc *services.TrafficServiceImpl, artifactSvc *services.ArtifactService) {
 	api := r.Group("/api")
 
 	// Traffic endpoints
@@ -120,6 +121,10 @@ func RegisterRoutes(r *gin.Engine, trafficSvc *services.TrafficServiceImpl, arti
 				return
 			}
 
+			if artifacts == nil {
+				artifacts = []models.WindowsArtifact{}
+			}
+
 			c.JSON(http.StatusOK, artifacts)
 		})
 
@@ -181,4 +186,38 @@ func RegisterRoutes(r *gin.Engine, trafficSvc *services.TrafficServiceImpl, arti
 			c.JSON(http.StatusOK, results)
 		})
 	}
+
+	hosts := api.Group("/hosts")
+	{
+		hosts.POST("/", func(c *gin.Context) {
+			var host models.Host
+
+			if err := c.ShouldBindJSON(&host); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+
+			if host.LastSeen.IsZero() {
+				host.LastSeen = time.Now()
+			}
+
+			_, err := db.NewInsert().Model(&host).Exec(c.Request.Context())
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+
+			c.JSON(http.StatusCreated, host)
+		})
+	}
+
+	api.GET("/dashboard/stats", func(c *gin.Context) {
+		stats := gin.H{
+			"totalEvents":        0,
+			"activeConnections":  0,
+			"suspiciousActivity": 0,
+			"systemHealth":       "healthy",
+		}
+		c.JSON(http.StatusOK, stats)
+	})
 }

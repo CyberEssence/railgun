@@ -22,7 +22,7 @@ func main() {
 	// Подключение к PostgreSQL
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
-		dsn = "postgres://postgres:postgres@localhost:5432/siem?sslmode=disable"
+		dsn = "postgres://postgres:(2a+3b=0c+1d)@localhost:5432/siem?sslmode=disable"
 	}
 
 	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(dsn)))
@@ -57,7 +57,7 @@ func main() {
 	}))
 
 	// Регистрация маршрутов API
-	api.RegisterRoutes(r, trafficSvc, artifactSvc)
+	api.RegisterRoutes(r, db, trafficSvc, artifactSvc)
 
 	// Запуск сервера
 	port := os.Getenv("PORT")
