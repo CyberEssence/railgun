@@ -1,223 +1,76 @@
 package api
 
 import (
-	"net/http"
-	"strconv"
-	"time"
-
 	"github.com/gin-gonic/gin"
-	"github.com/uptrace/bun"
 
-	"railgun-core/models"
-	"railgun-core/services"
+	"railgun-core/internal/domain"
+	"railgun-core/internal/infrastructure/persistence"
 )
 
-func RegisterRoutes(r *gin.Engine, db *bun.DB, trafficSvc *services.TrafficServiceImpl, artifactSvc *services.ArtifactService) {
+// RegisterRoutes регистрирует все маршруты API
+func RegisterRoutes(
+	r *gin.Engine,
+	cfg *domain.Config,
+	trafficRepo domain.TrafficRepository,
+	artifactRepo domain.ArtifactRepository,
+	aiService domain.AIService,
+	integrationService domain.IntegrationService,
+	twoFAService domain.TwoFAService,
+	userRepo *persistence.UserRepository,
+) {
+	// Создаем обработчики
+	authHandler := NewAuthHandler(cfg, twoFAService, userRepo)
+	trafficHandler := NewTrafficHandler(trafficRepo)
+	artifactHandler := NewArtifactHandler(artifactRepo)
+	aiHandler := NewAIHandler(aiService)
+	integrationHandler := NewIntegrationHandler(integrationService)
+	dashboardHandler := NewDashboardHandler(trafficRepo, aiService)
+
+	// Группа для аутентификации
+	auth := r.Group("/api/auth")
+	{
+		auth.POST("/login", authHandler.Login)
+		auth.POST("/register", authHandler.Register)
+		auth.POST("/verify-2fa", authHandler.Verify2FA)
+		auth.POST("/refresh", authHandler.RefreshToken)
+	}
+
+	// Группа для API с аутентификацией
 	api := r.Group("/api")
-
-	// Traffic endpoints
-	traffic := api.Group("/traffic")
+	api.Use(authHandler.AuthMiddleware())
 	{
-		traffic.GET("/host/:hostID", func(c *gin.Context) {
-			hostID := c.Param("hostID")
+		// Трафик
+		api.GET("/traffic/:hostId", trafficHandler.GetTrafficByHost)
+		api.GET("/traffic/stats/:hostId", trafficHandler.GetTrafficStats)
+		api.POST("/traffic", trafficHandler.SaveTraffic)
+		api.POST("/traffic/logs", trafficHandler.ProcessNetworkLog)
+		api.POST("/traffic/isolate", trafficHandler.IsolateHost)
+		api.GET("/traffic/heatmap", trafficHandler.GetThreatHeatmap)
 
-			from := time.Now().Add(-24 * time.Hour)
-			to := time.Now()
+		// Артефакты
+		api.GET("/artifacts/:hostId", artifactHandler.GetArtifactsByHost)
+		api.GET("/artifacts/id/:id", artifactHandler.GetArtifactByID)
+		api.POST("/artifacts", artifactHandler.SaveArtifact)
+		api.GET("/artifacts/search", artifactHandler.SearchArtifacts)
 
-			if fromStr := c.Query("from"); fromStr != "" {
-				if t, err := time.Parse(time.RFC3339, fromStr); err == nil {
-					from = t
-				}
-			}
+		// AI и анализ
+		api.POST("/ai/analyze", aiHandler.AnalyzeRealtime)
+		api.GET("/ai/patterns", aiHandler.GetAttackPatterns)
+		api.POST("/ai/counter-attack", aiHandler.ExecuteCounterAttack)
+		api.GET("/ai/apt-timeline", aiHandler.GetAPTTimeline)
+		api.POST("/ai/models/update", aiHandler.UpdateModels)
+		api.POST("/ai/models/train", aiHandler.TrainModel)
+		api.GET("/ai/models", aiHandler.ListModels)
 
-			if toStr := c.Query("to"); toStr != "" {
-				if t, err := time.Parse(time.RFC3339, toStr); err == nil {
-					to = t
-				}
-			}
+		// Интеграции
+		api.POST("/integration/scan", integrationHandler.ScanFile)
 
-			data, err := trafficSvc.GetTrafficByHost(c.Request.Context(), hostID, from, to)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-				return
-			}
-
-			c.JSON(http.StatusOK, data)
-		})
-
-		traffic.GET("/stats/host/:hostID", func(c *gin.Context) {
-			hostID := c.Param("hostID")
-
-			from := time.Now().Add(-24 * time.Hour)
-			to := time.Now()
-
-			if fromStr := c.Query("from"); fromStr != "" {
-				if t, err := time.Parse(time.RFC3339, fromStr); err == nil {
-					from = t
-				}
-			}
-
-			if toStr := c.Query("to"); toStr != "" {
-				if t, err := time.Parse(time.RFC3339, toStr); err == nil {
-					to = t
-				}
-			}
-
-			stats, err := trafficSvc.GetTrafficStats(c.Request.Context(), hostID, from, to)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-				return
-			}
-
-			c.JSON(http.StatusOK, stats)
-		})
-
-		traffic.POST("/", func(c *gin.Context) {
-			var traffic models.NetworkTraffic
-
-			if err := c.ShouldBindJSON(&traffic); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-				return
-			}
-
-			if traffic.Timestamp.IsZero() {
-				traffic.Timestamp = time.Now()
-			}
-
-			if err := trafficSvc.SaveTraffic(c.Request.Context(), traffic); err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-				return
-			}
-
-			c.JSON(http.StatusCreated, traffic)
-		})
+		// Дашборд
+		api.GET("/dashboard/stats", dashboardHandler.GetDashboardStats)
 	}
 
-	// Artifact endpoints
-	artifacts := api.Group("/artifacts")
-	{
-		artifacts.GET("/host/:hostID", func(c *gin.Context) {
-			hostID := c.Param("hostID")
-			artifactType := c.Query("type")
-
-			from := time.Now().Add(-24 * time.Hour)
-			to := time.Now()
-
-			if fromStr := c.Query("from"); fromStr != "" {
-				if t, err := time.Parse(time.RFC3339, fromStr); err == nil {
-					from = t
-				}
-			}
-
-			if toStr := c.Query("to"); toStr != "" {
-				if t, err := time.Parse(time.RFC3339, toStr); err == nil {
-					to = t
-				}
-			}
-
-			artifacts, err := artifactSvc.GetArtifactsByHost(c.Request.Context(), hostID, artifactType, from, to)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-				return
-			}
-
-			if artifacts == nil {
-				artifacts = []models.WindowsArtifact{}
-			}
-
-			c.JSON(http.StatusOK, artifacts)
-		})
-
-		artifacts.GET("/:id", func(c *gin.Context) {
-			idStr := c.Param("id")
-			id, err := strconv.ParseInt(idStr, 10, 64)
-			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID format"})
-				return
-			}
-
-			artifact, err := artifactSvc.GetArtifactByID(c.Request.Context(), id)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-				return
-			}
-
-			if artifact == nil {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Artifact not found"})
-				return
-			}
-
-			c.JSON(http.StatusOK, artifact)
-		})
-
-		artifacts.POST("/", func(c *gin.Context) {
-			var artifact models.WindowsArtifact
-
-			if err := c.ShouldBindJSON(&artifact); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-				return
-			}
-
-			if artifact.Timestamp.IsZero() {
-				artifact.Timestamp = time.Now()
-			}
-
-			if err := artifactSvc.SaveArtifact(c.Request.Context(), artifact); err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-				return
-			}
-
-			c.JSON(http.StatusCreated, artifact)
-		})
-
-		artifacts.GET("/search", func(c *gin.Context) {
-			query := c.Query("q")
-			if query == "" {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Search query cannot be empty"})
-				return
-			}
-
-			results, err := artifactSvc.SearchArtifacts(c.Request.Context(), query)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-				return
-			}
-
-			c.JSON(http.StatusOK, results)
-		})
-	}
-
-	hosts := api.Group("/hosts")
-	{
-		hosts.POST("/", func(c *gin.Context) {
-			var host models.Host
-
-			if err := c.ShouldBindJSON(&host); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-				return
-			}
-
-			if host.LastSeen.IsZero() {
-				host.LastSeen = time.Now()
-			}
-
-			_, err := db.NewInsert().Model(&host).Exec(c.Request.Context())
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-				return
-			}
-
-			c.JSON(http.StatusCreated, host)
-		})
-	}
-
-	api.GET("/dashboard/stats", func(c *gin.Context) {
-		stats := gin.H{
-			"totalEvents":        0,
-			"activeConnections":  0,
-			"suspiciousActivity": 0,
-			"systemHealth":       "healthy",
-		}
-		c.JSON(http.StatusOK, stats)
+	// Публичные эндпоинты
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{"status": "ok"})
 	})
 }
