@@ -2,6 +2,8 @@ package models
 
 import (
 	"time"
+
+	"github.com/uptrace/bun"
 )
 
 // Config содержит конфигурацию приложения
@@ -108,22 +110,24 @@ type WindowsArtifact struct {
 
 // User представляет пользователя системы
 type User struct {
-	ID           int64     `json:"id"`
-	Username     string    `json:"username"`
-	Email        string    `json:"email"`
-	PasswordHash string    `json:"-"`
-	IsActive     bool      `json:"is_active"`
-	CreatedAt    time.Time `json:"created_at"`
-	LastLogin    time.Time `json:"last_login"`
+	ID           int64     `bun:"id,pk,autoincrement" json:"id"`
+	Username     string    `bun:"username,unique,notnull" json:"username"`
+	Email        string    `bun:"email,unique,notnull" json:"email"`
+	PasswordHash string    `bun:"password_hash,notnull" json:"-"`
+	IsActive     bool      `bun:"is_active,default:true" json:"is_active"`
+	CreatedAt    time.Time `bun:"created_at,nullzero,notnull,default:current_timestamp" json:"created_at"`
+	LastLogin    time.Time `bun:"last_login" json:"last_login"`
 }
 
 // TwoFAToken модель для хранения токенов 2FA
 type TwoFAToken struct {
-	ID        int64     `json:"id"`
-	UserID    int64     `json:"user_id"`
-	TokenHash string    `json:"-"`
-	ExpiresAt time.Time `json:"expires_at"`
-	Used      bool      `json:"used"`
+	bun.BaseModel `bun:"table:two_fa_tokens,alias:t"`
+
+	ID        int64     `bun:"id,pk,autoincrement" json:"id"`
+	UserID    int64     `bun:"user_id,notnull" json:"user_id"`
+	TokenHash string    `bun:"token_hash,notnull" json:"-"`
+	ExpiresAt time.Time `bun:"expires_at,notnull" json:"expires_at"`
+	Used      bool      `bun:"used,notnull,default:false" json:"used"`
 }
 
 // TrafficStats содержит статистику по трафику
@@ -330,4 +334,26 @@ type AIModel struct {
 	Version     string
 	Description string
 	LoadedAt    time.Time
+}
+
+// LoginRequest - запрос на вход
+type LoginRequest struct {
+	Username string `json:"username" binding:"required"`
+	Password string `json:"password" binding:"required"`
+}
+
+// LoginResponse - ответ на запрос входа с 2FA
+type LoginResponse struct {
+	RequiresTwoFA bool   `json:"requires_2fa"`
+	UserID        int64  `json:"user_id,omitempty"`
+	Message       string `json:"message"`
+	TwoFAToken    string `json:"two_fa_token,omitempty"`
+}
+
+// TokenResponse - ответ с JWT токенами
+type TokenResponse struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	ExpiresIn    int    `json:"expires_in"`
+	TokenType    string `json:"token_type"`
 }

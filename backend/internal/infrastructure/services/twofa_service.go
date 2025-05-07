@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"log"
 	"time"
 
 	"railgun-core/internal/domain"
@@ -23,10 +24,17 @@ func NewTwoFAService(userRepo domain.UserRepository) domain.TwoFAService {
 	}
 }
 
+// internal/infrastructure/services/twofa_service.go
 func (s *TwoFAService) GenerateToken(ctx context.Context, userID int64) (string, error) {
+	// Проверка существования пользователя
+	_, err := s.userRepo.GetUserByID(ctx, userID)
+	if err != nil {
+		return "", fmt.Errorf("user not found: %w", err)
+	}
+
 	// Генерируем случайный токен
 	tokenBytes := make([]byte, 32)
-	_, err := rand.Read(tokenBytes)
+	_, err = rand.Read(tokenBytes)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate random token: %w", err)
 	}
@@ -61,6 +69,8 @@ func (s *TwoFAService) Validate2FAToken(ctx context.Context, token string, userI
 	// Получаем токен из БД
 	twoFAToken, err := s.userRepo.GetTwoFAToken(ctx, tokenHash, userID)
 	if err != nil {
+		// Добавьте логирование для отладки
+		log.Printf("Error getting token: %v", err)
 		return false, fmt.Errorf("invalid token")
 	}
 

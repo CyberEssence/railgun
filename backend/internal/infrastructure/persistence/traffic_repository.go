@@ -110,15 +110,32 @@ func (r *TrafficRepository) SaveTraffic(ctx context.Context, traffic models.Netw
 	return nil
 }
 
-func (r *TrafficRepository) ProcessNetworkLog(ctx context.Context, sourceIP, destinationIP, logData string) ([]models.NetworkTraffic, error) {
+func (r *TrafficRepository) ProcessNetworkLog(ctx context.Context, hostID, logData, logType string) ([]models.NetworkTraffic, error) {
 	// Парсим входные данные в структуру NetworkLog
-	parsedLog, err := parseNetworkLog(sourceIP, destinationIP, logData)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse log data: %w", err)
+	parsedLog := models.NetworkLog{
+		SourceIP:  "", // Будет заполнено из logData
+		LogType:   logType,
+		RawData:   logData,
+		Timestamp: time.Now(),
+		Severity:  "info", // По умолчанию
+	}
+
+	// Простая логика парсинга (в реальном приложении будет сложнее)
+	// Предполагаем, что logData содержит строки вида "src_ip=X.X.X.X dst_ip=Y.Y.Y.Y"
+	if strings.Contains(logData, "src_ip=") {
+		parts := strings.Split(logData, " ")
+		for _, part := range parts {
+			if strings.HasPrefix(part, "src_ip=") {
+				parsedLog.SourceIP = strings.TrimPrefix(part, "src_ip=")
+			}
+			if strings.HasPrefix(part, "dst_ip=") {
+				parsedLog.DestinationIP = strings.TrimPrefix(part, "dst_ip=")
+			}
+		}
 	}
 
 	// Сохраняем в PostgreSQL
-	_, err = r.db.NewInsert().Model(&parsedLog).Exec(ctx)
+	_, err := r.db.NewInsert().Model(&parsedLog).Exec(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to save log to database: %w", err)
 	}
@@ -142,7 +159,15 @@ func (r *TrafficRepository) ProcessNetworkLog(ctx context.Context, sourceIP, des
 	}
 
 	// Возвращаем связанные записи трафика
-	relatedTraffic, err := r.getRelatedTraffic(ctx, sourceIP, destinationIP)
+	var relatedTraffic []models.NetworkTraffic
+	err = r.db.NewSelect().
+		Model(&relatedTraffic).
+		Where("host_id = ?", hostID).
+		Where("timestamp > ?", time.Now().Add(-1*time.Hour)).
+		Order("timestamp DESC").
+		Limit(100).
+		Scan(ctx)
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to get related traffic: %w", err)
 	}

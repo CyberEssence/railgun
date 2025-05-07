@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -397,22 +398,50 @@ func (s *AIService) getMainIndicator(report models.ThreatReport) string {
 }
 
 func (s *AIService) AnalyzeData(ctx context.Context, data []string, dataType, hostID string) (*models.AnalysisResult, error) {
-	// Пример реализации
+	// Пример реализации анализа данных
 	result := &models.AnalysisResult{
 		ThreatLevel:     s.calculateThreatLevel(data),
 		Confidence:      0.85,
-		DetectedThreats: []string{"APT", "DDoS"},
+		DetectedThreats: []string{"Suspicious activity", "Possible data exfiltration"},
 		Recommendations: []string{"Isolate host", "Analyze logs"},
 		Timestamp:       time.Now(),
 	}
+
+	// Логирование анализа
+	log.Printf("Analysis performed for host %s, data type: %s, threat level: %d",
+		hostID, dataType, result.ThreatLevel)
+
 	return result, nil
 }
 
 func (s *AIService) calculateThreatLevel(data []string) int {
+	// Простая логика определения уровня угрозы
 	if len(data) == 0 {
 		return 0
 	}
-	return len(data) % 5 // Пример расчета уровня угрозы
+
+	threatLevel := 0
+	for _, item := range data {
+		if strings.Contains(strings.ToLower(item), "error") {
+			threatLevel += 1
+		}
+		if strings.Contains(strings.ToLower(item), "warning") {
+			threatLevel += 1
+		}
+		if strings.Contains(strings.ToLower(item), "critical") {
+			threatLevel += 2
+		}
+		if strings.Contains(strings.ToLower(item), "attack") {
+			threatLevel += 3
+		}
+	}
+
+	// Ограничиваем максимальный уровень угрозы
+	if threatLevel > 5 {
+		threatLevel = 5
+	}
+
+	return threatLevel
 }
 
 func (s *AIService) GetThreatStats(ctx context.Context, from, to time.Time) (*models.ThreatStats, error) {

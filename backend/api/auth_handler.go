@@ -1,11 +1,13 @@
 package api
 
 import (
+	"log"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
+	"golang.org/x/crypto/bcrypt"
 
 	"railgun-core/internal/domain"
 	"railgun-core/internal/infrastructure/persistence"
@@ -28,8 +30,9 @@ func NewAuthHandler(config *domain.Config, twoFAService domain.TwoFAService, use
 
 // LoginRequest структура для запроса на вход
 type LoginRequest struct {
-	Username string `json:"username" binding:"required"`
-	Password string `json:"password" binding:"required"`
+	Username   string `json:"username" binding:"required"`
+	Password   string `json:"password" binding:"required"`
+	TwoFAToken string `json:"two_fa_token,omitempty"`
 }
 
 // LoginResponse структура для ответа на вход
@@ -65,48 +68,82 @@ type RefreshRequest struct {
 	RefreshToken string `json:"refresh_token" binding:"required"`
 }
 
-// Login обрабатывает запрос на вход
+// api/auth_handler.go
 func (h *AuthHandler) Login(c *gin.Context) {
-	var req LoginRequest
+	var req models.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
 		return
 	}
 
-	// В реальном приложении здесь будет проверка учетных данных через UserRepository
-	// Для демонстрации используем заглушку
-	if req.Username != "admin" || req.Password != "password" {
+	user, err := h.userRepo.GetUserByUsername(c.Request.Context(), req.Username)
+	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 		return
 	}
 
-	// Генерируем 2FA токен
-	token, err := h.twoFAService.GenerateToken(c, 1) // 1 - ID пользователя admin
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate 2FA token"})
+	// Проверка пароля
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 		return
 	}
 
-	// В реальном приложении токен будет отправлен по email или SMS
-	// Для демонстрации выводим его в логи
-	c.JSON(http.StatusOK, LoginResponse{
-		RequiresTwoFA: true,
-		UserID:        1,
-		Message:       "2FA token required. For demo, token is: " + token,
+	// Если включена 2FA
+	if h.twoFAService != nil {
+		token, err := h.twoFAService.GenerateToken(c.Request.Context(), user.ID)
+		if err != nil {
+			// Логируем ошибку для отладки
+			log.Printf("2FA token generation failed: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate 2FA token"})
+			return
+		}
+
+		c.JSON(http.StatusOK, models.LoginResponse{
+			RequiresTwoFA: true,
+			UserID:        user.ID,
+			Message:       "2FA token required",
+			TwoFAToken:    token,
+		})
+		return
+	}
+
+	// Генерация JWT токенов если 2FA не используется
+	accessToken, refreshToken, expiresIn, err := h.generateTokens(user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate tokens"})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.TokenResponse{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		ExpiresIn:    expiresIn,
+		TokenType:    "Bearer",
 	})
 }
 
 // Verify2FA проверяет 2FA токен и выдает JWT токен
 func (h *AuthHandler) Verify2FA(c *gin.Context) {
-	var req Verify2FARequest
+	var req struct {
+		UserID int64  `json:"user_id" binding:"required"`
+		Token  string `json:"token" binding:"required"`
+	}
+
 	if err := c.ShouldBindJSON(&req); err != nil {
+		// Добавьте логирование для отладки
+		log.Printf("Invalid request format: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
+	// Добавьте логирование для отладки
+	log.Printf("Verifying 2FA token for user %d", req.UserID)
+
 	// Проверяем 2FA токен
 	valid, err := h.twoFAService.Validate2FAToken(c, req.Token, req.UserID)
 	if err != nil || !valid {
+		// Добавьте логирование для отладки
+		log.Printf("Token validation failed: %v", err)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid 2FA token"})
 		return
 	}
@@ -118,7 +155,7 @@ func (h *AuthHandler) Verify2FA(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, TokenResponse{
+	c.JSON(http.StatusOK, models.TokenResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		ExpiresIn:    expiresIn,

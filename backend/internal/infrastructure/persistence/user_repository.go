@@ -3,12 +3,12 @@ package persistence
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/uptrace/bun"
 	"golang.org/x/crypto/bcrypt"
 
-	"railgun-core/internal/domain"
 	"railgun-core/internal/models"
 )
 
@@ -113,8 +113,21 @@ func (r *UserRepository) ValidateCredentials(ctx context.Context, username, pass
 }
 
 func (r *UserRepository) SaveTwoFAToken(ctx context.Context, token models.TwoFAToken) error {
-	_, err := r.db.NewInsert().Model(&token).Exec(ctx)
-	return err
+	// Проверяем существование таблицы
+	_, err := r.db.NewCreateTable().
+		Model((*models.TwoFAToken)(nil)).
+		IfNotExists().
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to ensure table exists: %w", err)
+	}
+
+	// Сохраняем токен
+	_, err = r.db.NewInsert().Model(&token).Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to insert token: %w", err)
+	}
+	return nil
 }
 
 func (r *UserRepository) GetTwoFAToken(ctx context.Context, tokenHash string, userID int64) (*models.TwoFAToken, error) {
@@ -128,6 +141,8 @@ func (r *UserRepository) GetTwoFAToken(ctx context.Context, tokenHash string, us
 		Scan(ctx)
 
 	if err != nil {
+		// Добавьте логирование для отладки
+		log.Printf("Error querying token: %v", err)
 		return nil, err
 	}
 
@@ -135,8 +150,9 @@ func (r *UserRepository) GetTwoFAToken(ctx context.Context, tokenHash string, us
 }
 
 func (r *UserRepository) MarkTokenAsUsed(ctx context.Context, tokenID int64) error {
+	// Исправлено: используем правильную модель
 	_, err := r.db.NewUpdate().
-		Model((*domain.TwoFAService)(nil)).
+		Model((*models.TwoFAToken)(nil)). // Используем правильную модель
 		Set("used = true").
 		Where("id = ?", tokenID).
 		Exec(ctx)

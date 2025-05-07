@@ -16,13 +16,13 @@ func LoadConfig() (*domain.Config, error) {
 			CORSAllowOrigins: strings.Split(getEnv("CORS_ALLOW_ORIGINS", "http://localhost:3000"), ","),
 		},
 		Database: domain.DatabaseConfig{
-			DSN: getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/siem?sslmode=disable"),
+			DSN: getEnv("DATABASE_URL", "postgres://postgres:(2a+3b=0c+1d)@localhost:5432/siem?sslmode=disable"),
 		},
 		Elastic: domain.ElasticConfig{
 			URL: getEnv("ELASTIC_URL", "http://localhost:9200"),
 		},
 		Integration: domain.IntegrationConfig{
-			VirusTotalAPIKey: getEnv("VIRUSTOTAL_API_KEY", ""),
+			VirusTotalAPIKey: getEnv("VIRUSTOTAL_API_KEY", "8951c3c0f005ceac53a4f694723a7071a35ea0a9e2f977c66e6d3ac55c4ef9b2"),
 			MaxFileSizeMB:    getEnvAsInt("MAX_FILE_SIZE", 32<<20), // 32MB по умолчанию
 		},
 		Security: domain.SecurityConfig{
