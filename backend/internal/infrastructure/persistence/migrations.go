@@ -1,0 +1,156 @@
+package persistence
+
+import (
+	"context"
+	"log"
+	"time"
+
+	"github.com/uptrace/bun"
+)
+
+// Структуры для миграций
+type Event struct {
+	bun.BaseModel `bun:"table:events,alias:e"`
+
+	ID        int64                  `bun:"id,pk,autoincrement"`
+	Type      string                 `bun:"type,notnull"`
+	Source    string                 `bun:"source,notnull"`
+	Timestamp time.Time              `bun:"timestamp,notnull"`
+	Data      map[string]interface{} `bun:"data,type:jsonb"`
+	Severity  string                 `bun:"severity"`
+	HostID    string                 `bun:"host_id,notnull"`
+}
+
+type Host struct {
+	bun.BaseModel `bun:"table:hosts,alias:h"`
+
+	ID          string    `bun:"id,pk"`
+	Hostname    string    `bun:"hostname,notnull"`
+	IPAddress   string    `bun:"ip_address"`
+	LastSeen    time.Time `bun:"last_seen"`
+	OSVersion   string    `bun:"os_version"`
+	Status      string    `bun:"status"`
+	Description string    `bun:"description"`
+}
+
+type NetworkTraffic struct {
+	bun.BaseModel `bun:"table:network_traffic,alias:nt"`
+
+	ID          int64     `bun:"id,pk,autoincrement"`
+	HostID      string    `bun:"host_id,notnull"`
+	Timestamp   time.Time `bun:"timestamp,notnull"`
+	SrcIP       string    `bun:"src_ip,notnull"`
+	DstIP       string    `bun:"dst_ip,notnull"`
+	SrcPort     int       `bun:"src_port"`
+	DstPort     int       `bun:"dst_port"`
+	Protocol    string    `bun:"protocol"`
+	BytesSent   int64     `bun:"bytes_sent"`
+	BytesRecv   int64     `bun:"bytes_recv"`
+	PacketsSent int64     `bun:"packets_sent"`
+	PacketsRecv int64     `bun:"packets_recv"`
+	Duration    float64   `bun:"duration"`
+}
+
+type WindowsArtifact struct {
+	bun.BaseModel `bun:"table:windows_artifacts,alias:wa"`
+
+	ID          int64                  `bun:"id,pk,autoincrement"`
+	HostID      string                 `bun:"host_id,notnull"`
+	Timestamp   time.Time              `bun:"timestamp,notnull"`
+	Type        string                 `bun:"type,notnull"`
+	Path        string                 `bun:"path"`
+	Value       string                 `bun:"value"`
+	Size        int64                  `bun:"size"`
+	Hash        string                 `bun:"hash"`
+	Owner       string                 `bun:"owner"`
+	Permissions string                 `bun:"permissions"`
+	Metadata    map[string]interface{} `bun:"metadata,type:jsonb"`
+}
+
+type User struct {
+	bun.BaseModel `bun:"table:users,alias:u"`
+
+	ID           int64     `bun:"id,pk,autoincrement"`
+	Username     string    `bun:"username,unique,notnull"`
+	Email        string    `bun:"email,unique,notnull"`
+	PasswordHash string    `bun:"password_hash,notnull"`
+	IsActive     bool      `bun:"is_active,default:true"`
+	CreatedAt    time.Time `bun:"created_at,nullzero,notnull,default:current_timestamp"`
+	LastLogin    time.Time `bun:"last_login"`
+}
+
+type TwoFAToken struct {
+	bun.BaseModel `bun:"table:two_fa_tokens,alias:t"`
+
+	ID        int64     `bun:"id,pk,autoincrement"`
+	UserID    int64     `bun:"user_id,notnull"`
+	TokenHash string    `bun:"token_hash,notnull"`
+	ExpiresAt time.Time `bun:"expires_at,notnull"`
+	Used      bool      `bun:"used,notnull,default:false"`
+}
+
+type NetworkLog struct {
+	bun.BaseModel `bun:"table:network_logs,alias:nl"`
+
+	ID            int64     `bun:"id,pk,autoincrement"`
+	SourceIP      string    `bun:"source_ip"`
+	DestinationIP string    `bun:"destination_ip"`
+	Protocol      string    `bun:"protocol"`
+	LogType       string    `bun:"log_type"`
+	RawData       string    `bun:"raw_data"`
+	Timestamp     time.Time `bun:"timestamp"`
+	Severity      string    `bun:"severity"`
+}
+
+type AttackPattern struct {
+	bun.BaseModel `bun:"table:attack_patterns,alias:ap"`
+
+	ID          int64     `bun:"id,pk,autoincrement"`
+	Name        string    `bun:"name,unique"`
+	Description string    `bun:"description"`
+	MITREID     string    `bun:"mitre_id"`
+	Severity    string    `bun:"severity"`
+	Indicators  []string  `bun:"indicators,type:jsonb"`
+	CreatedAt   time.Time `bun:"created_at,nullzero,default:current_timestamp"`
+}
+
+type ThreatReport struct {
+	bun.BaseModel `bun:"table:threat_reports,alias:tr"`
+
+	ID                   int64     `bun:"id,pk,autoincrement"`
+	Timestamp            time.Time `bun:"timestamp"`
+	AnalysisType         string    `bun:"analysis_type"`
+	MaliciousProbability float64   `bun:"malicious_probability"`
+	DetectedPatterns     []string  `bun:"detected_patterns,type:jsonb"`
+	Confidence           float64   `bun:"confidence"`
+	RawData              []byte    `bun:"raw_data,type:bytea"`
+	ThreatType           string    `bun:"threat_type"`
+	Indicators           []string  `bun:"indicators,type:jsonb"`
+}
+
+// RunMigrations запускает миграции базы данных
+func RunMigrations(ctx context.Context, db *bun.DB) error {
+	models := []interface{}{
+		(*Event)(nil),
+		(*Host)(nil),
+		(*NetworkTraffic)(nil),
+		(*WindowsArtifact)(nil),
+		(*User)(nil),
+		(*TwoFAToken)(nil),
+		(*AttackPattern)(nil),
+		(*ThreatReport)(nil),
+		(*NetworkLog)(nil),
+	}
+
+	for _, model := range models {
+		if _, err := db.NewCreateTable().
+			Model(model).
+			IfNotExists().
+			Exec(ctx); err != nil {
+			return err
+		}
+	}
+
+	log.Println("Migrations completed successfully")
+	return nil
+}

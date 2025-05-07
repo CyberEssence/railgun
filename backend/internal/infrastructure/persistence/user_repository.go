@@ -1,0 +1,167 @@
+package persistence
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"time"
+
+	"github.com/uptrace/bun"
+	"golang.org/x/crypto/bcrypt"
+
+	"railgun-core/internal/models"
+)
+
+type UserRepository struct {
+	db *bun.DB
+}
+
+func NewUserRepository(db *bun.DB) *UserRepository {
+	return &UserRepository{
+		db: db,
+	}
+}
+
+func (r *UserRepository) GetUserByID(ctx context.Context, id int64) (*models.User, error) {
+	user := new(models.User)
+	err := r.db.NewSelect().
+		Model(user).
+		Where("id = ?", id).
+		Scan(ctx)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return user, nil
+}
+
+func (r *UserRepository) GetUserByUsername(ctx context.Context, username string) (*models.User, error) {
+	user := new(models.User)
+	err := r.db.NewSelect().
+		Model(user).
+		Where("username = ?", username).
+		Scan(ctx)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return user, nil
+}
+
+func (r *UserRepository) CreateUser(ctx context.Context, user models.User) error {
+	// Хеширование пароля перед сохранением
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.PasswordHash), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %w", err)
+	}
+	user.PasswordHash = string(hashedPassword)
+
+	// Установка времени создания
+	if user.CreatedAt.IsZero() {
+		user.CreatedAt = time.Now()
+	}
+
+	_, err = r.db.NewInsert().Model(&user).Exec(ctx)
+	return err
+}
+
+func (r *UserRepository) UpdateUser(ctx context.Context, user *models.User) error {
+	// Если пароль изменился, хешируем его
+	if len(user.PasswordHash) > 0 && !isHashedPassword(user.PasswordHash) {
+		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.PasswordHash), bcrypt.DefaultCost)
+		if err != nil {
+			return fmt.Errorf("failed to hash password: %w", err)
+		}
+		user.PasswordHash = string(hashedPassword)
+	}
+
+	_, err := r.db.NewUpdate().
+		Model(&user).
+		Where("id = ?", user.ID).
+		Exec(ctx)
+
+	return err
+}
+
+func (r *UserRepository) ValidateCredentials(ctx context.Context, username, password string) (*models.User, error) {
+	user, err := r.GetUserByUsername(ctx, username)
+	if err != nil {
+		return nil, fmt.Errorf("invalid credentials")
+	}
+
+	// Проверка пароля
+	err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password))
+	if err != nil {
+		return nil, fmt.Errorf("invalid credentials")
+	}
+
+	// Обновляем время последнего входа
+	user.LastLogin = time.Now()
+	_, err = r.db.NewUpdate().
+		Model(user).
+		Set("last_login = ?", user.LastLogin).
+		Where("id = ?", user.ID).
+		Exec(ctx)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to update last login: %w", err)
+	}
+
+	return user, nil
+}
+
+func (r *UserRepository) SaveTwoFAToken(ctx context.Context, token models.TwoFAToken) error {
+	// Проверяем существование таблицы
+	_, err := r.db.NewCreateTable().
+		Model((*models.TwoFAToken)(nil)).
+		IfNotExists().
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to ensure table exists: %w", err)
+	}
+
+	// Сохраняем токен
+	_, err = r.db.NewInsert().Model(&token).Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to insert token: %w", err)
+	}
+	return nil
+}
+
+func (r *UserRepository) GetTwoFAToken(ctx context.Context, tokenHash string, userID int64) (*models.TwoFAToken, error) {
+	token := new(models.TwoFAToken)
+	err := r.db.NewSelect().
+		Model(token).
+		Where("token_hash = ?", tokenHash).
+		Where("user_id = ?", userID).
+		Where("used = false").
+		Where("expires_at > ?", time.Now()).
+		Scan(ctx)
+
+	if err != nil {
+		// Добавьте логирование для отладки
+		log.Printf("Error querying token: %v", err)
+		return nil, err
+	}
+
+	return token, nil
+}
+
+func (r *UserRepository) MarkTokenAsUsed(ctx context.Context, tokenID int64) error {
+	// Исправлено: используем правильную модель
+	_, err := r.db.NewUpdate().
+		Model((*models.TwoFAToken)(nil)). // Используем правильную модель
+		Set("used = true").
+		Where("id = ?", tokenID).
+		Exec(ctx)
+
+	return err
+}
+
+// Вспомогательная функция для проверки, является ли строка хешированным паролем
+func isHashedPassword(password string) bool {
+	// Простая эвристика: bcrypt хеши начинаются с $2a$, $2b$ или $2y$
+	return len(password) > 4 && (password[:4] == "$2a$" || password[:4] == "$2b$" || password[:4] == "$2y$")
+}
