@@ -3,10 +3,7 @@ package persistence
 import (
 	"bytes"
 	"context"
-<<<<<<< HEAD
 	"database/sql"
-=======
->>>>>>> 9d081773af114018cd750a70ef20c93216cb9a20
 	"encoding/json"
 	"fmt"
 	"log"
@@ -66,7 +63,6 @@ func (r *TrafficRepository) GetTrafficByHost(ctx context.Context, hostID string,
 }
 
 func (r *TrafficRepository) GetTrafficStats(ctx context.Context, hostID string, from, to time.Time) (*models.TrafficStats, error) {
-<<<<<<< HEAD
 	var stats struct {
 		TotalBytesSent   int64   `bun:"total_bytes_sent"`
 		TotalBytesRecv   int64   `bun:"total_bytes_recv"`
@@ -99,26 +95,6 @@ func (r *TrafficRepository) GetTrafficStats(ctx context.Context, hostID string, 
 		TotalPacketsRecv: stats.TotalPacketsRecv,
 		AverageDuration:  stats.AverageDuration,
 	}, nil
-=======
-	var stats *models.TrafficStats
-	query := `
-		SELECT 
-			COALESCE(SUM(bytes_sent), 0) as total_bytes_sent,
-			COALESCE(SUM(bytes_recv), 0) as total_bytes_recv,
-			COALESCE(SUM(packets_sent), 0) as total_packets_sent,
-			COALESCE(SUM(packets_recv), 0) as total_packets_recv,
-			COALESCE(AVG(duration), 0) as average_duration
-		FROM network_traffic
-		WHERE host_id = ? AND timestamp BETWEEN ? AND ?
-	`
-
-	err := r.db.NewRaw(query, hostID, from, to).Scan(ctx, &stats)
-	if err != nil {
-		return stats, fmt.Errorf("query failed: %w", err)
-	}
-
-	return stats, nil
->>>>>>> 9d081773af114018cd750a70ef20c93216cb9a20
 }
 
 func (r *TrafficRepository) SaveTraffic(ctx context.Context, traffic models.NetworkTraffic) error {
@@ -256,7 +232,6 @@ func (r *TrafficRepository) IsolateHost(ctx context.Context, hostID string, reas
 		Scan(ctx)
 
 	if err != nil {
-<<<<<<< HEAD
 		if err == sql.ErrNoRows {
 			// Создаем хост, если он не существует
 			host = models.Host{
@@ -274,8 +249,6 @@ func (r *TrafficRepository) IsolateHost(ctx context.Context, hostID string, reas
 			}
 			return nil // Хост создан и уже изолирован
 		}
-=======
->>>>>>> 9d081773af114018cd750a70ef20c93216cb9a20
 		return fmt.Errorf("host not found: %w", err)
 	}
 
@@ -290,12 +263,6 @@ func (r *TrafficRepository) IsolateHost(ctx context.Context, hostID string, reas
 		return fmt.Errorf("failed to update host status: %w", err)
 	}
 
-<<<<<<< HEAD
-=======
-	// Здесь может быть дополнительная логика изоляции
-	// например, отправка команд на фаервол или другие системы
-
->>>>>>> 9d081773af114018cd750a70ef20c93216cb9a20
 	return nil
 }
 
