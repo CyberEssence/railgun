@@ -78,6 +78,7 @@ type Host struct {
 
 // NetworkTraffic представляет запись о сетевом трафике
 type NetworkTraffic struct {
+<<<<<<< HEAD
 	bun.BaseModel `bun:"table:network_traffic,alias:nt"`
 	ID            int64     `json:"id"`
 	HostID        string    `json:"host_id"`
@@ -92,6 +93,21 @@ type NetworkTraffic struct {
 	PacketsSent   int64     `json:"packets_sent"`
 	PacketsRecv   int64     `json:"packets_recv"`
 	Duration      float64   `json:"duration"`
+=======
+	ID          int64     `json:"id"`
+	HostID      string    `json:"host_id"`
+	Timestamp   time.Time `json:"timestamp"`
+	SrcIP       string    `json:"src_ip"`
+	DstIP       string    `json:"dst_ip"`
+	SrcPort     int       `json:"src_port"`
+	DstPort     int       `json:"dst_port"`
+	Protocol    string    `json:"protocol"`
+	BytesSent   int64     `json:"bytes_sent"`
+	BytesRecv   int64     `json:"bytes_recv"`
+	PacketsSent int64     `json:"packets_sent"`
+	PacketsRecv int64     `json:"packets_recv"`
+	Duration    float64   `json:"duration"`
+>>>>>>> 9d081773af114018cd750a70ef20c93216cb9a20
 }
 
 // WindowsArtifact представляет системный артефакт Windows
