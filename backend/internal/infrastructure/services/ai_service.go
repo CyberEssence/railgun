@@ -67,29 +67,28 @@ func (s *AIService) AnalyzeRealtime(ctx context.Context, req models.RealtimeDete
 }
 
 func (s *AIService) GetAttackPatterns(ctx context.Context, category, severity string, page, perPage int) ([]*models.AttackPattern, int, error) {
-	var patterns []*models.AttackPattern // 1. Изменили на слайс указателей
+	var patterns []*models.AttackPattern
 
 	// Базовый запрос с фильтрами
-	baseQuery := s.db.NewSelect().
-		Model(&patterns).
-		Where("1 = 1") // Базовая истинная условие для удобства
+	q := s.db.NewSelect().
+		Model(&patterns)
 
 	// Добавляем фильтры
 	if category != "" {
-		baseQuery = baseQuery.Where("category = ?", category)
+		q = q.Where("category = ?", category)
 	}
 	if severity != "" {
-		baseQuery = baseQuery.Where("severity = ?", severity)
+		q = q.Where("severity = ?", severity)
 	}
 
-	// 2. Получаем общее количество записей
-	count, err := baseQuery.Clone().Count(ctx)
+	// Получаем общее количество записей
+	total, err := q.Clone().Count(ctx)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to count patterns: %w", err)
 	}
 
-	// 3. Добавляем пагинацию и сортировку
-	err = baseQuery.
+	// Добавляем пагинацию и сортировку
+	err = q.
 		Order("severity DESC").
 		Limit(perPage).
 		Offset((page - 1) * perPage).
@@ -98,7 +97,7 @@ func (s *AIService) GetAttackPatterns(ctx context.Context, category, severity st
 		return nil, 0, fmt.Errorf("failed to fetch patterns: %w", err)
 	}
 
-	return patterns, count, nil
+	return patterns, total, nil
 }
 
 func (s *AIService) ExecuteCounterAttack(ctx context.Context, req models.CounterAttackRequest) error {

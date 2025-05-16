@@ -3,7 +3,9 @@ package persistence
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -91,7 +93,10 @@ func (r *ArtifactRepository) GetArtifactByID(ctx context.Context, id int64) (*mo
 		Scan(ctx)
 
 	if err != nil {
-		return nil, err
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, sql.ErrNoRows // Явно возвращаем ошибку "не найдено"
+		}
+		return nil, fmt.Errorf("database error: %w", err)
 	}
 
 	// Конвертируем WindowsArtifact в общий Artifact
@@ -112,9 +117,9 @@ func (r *ArtifactRepository) GetArtifactByID(ctx context.Context, id int64) (*mo
 
 func (r *ArtifactRepository) SaveArtifact(ctx context.Context, artifact *models.WindowsArtifact) error {
 	// Сохраняем в PostgreSQL
-	_, err := r.db.NewInsert().Model(&artifact).Exec(ctx)
+	_, err := r.db.NewInsert().Model(artifact).Exec(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to save artifact: %w", err)
 	}
 
 	// Если Elasticsearch доступен, индексируем и там
@@ -138,6 +143,28 @@ func (r *ArtifactRepository) SaveArtifact(ctx context.Context, artifact *models.
 	return nil
 }
 
+// Проверяет наличие столбца threat_level в таблице
+func (r *ArtifactRepository) hasThreatLevelColumn(ctx context.Context) bool {
+	// Проверяем наличие столбца в информационной схеме PostgreSQL
+	var exists bool
+	err := r.db.NewRaw(`
+        SELECT EXISTS (
+            SELECT 1 
+            FROM information_schema.columns 
+            WHERE table_name = 'windows_artifacts' 
+            AND column_name = 'threat_level'
+        )
+    `).Scan(ctx, &exists)
+
+	if err != nil {
+		// В случае ошибки предполагаем, что столбца нет
+		log.Printf("Error checking threat_level column: %v", err)
+		return false
+	}
+
+	return exists
+}
+
 func (r *ArtifactRepository) SearchArtifacts(
 	ctx context.Context,
 	query string,
@@ -146,42 +173,75 @@ func (r *ArtifactRepository) SearchArtifacts(
 	page int,
 	perPage int,
 ) ([]*models.Artifact, int, error) {
-
-	// Рассчитываем offset для пагинации
 	offset := (page - 1) * perPage
+	severityMap := map[string]int{
+		"low":      1,
+		"medium":   5,
+		"high":     8,
+		"critical": 10,
+	}
 
 	if r.elastic == nil {
-		// Поиск через PostgreSQL
-		var artifacts []*models.Artifact
-		q := r.db.NewSelect().
-			Model(&artifacts).
-			Where("(path ILIKE ? OR value ILIKE ? OR owner ILIKE ?)",
-				"%"+query+"%", "%"+query+"%", "%"+query+"%")
+		// Используем WindowsArtifact как базовую модель
+		var windowsArtifacts []*models.WindowsArtifact
 
-		// Добавляем фильтры по типу и severity если они указаны
+		q := r.db.NewSelect().
+			Model(&windowsArtifacts).
+			WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
+				return q.
+					Where("path ILIKE ?", "%"+query+"%").
+					WhereOr("value ILIKE ?", "%"+query+"%").
+					WhereOr("owner ILIKE ?", "%"+query+"%")
+			})
+
 		if artifactType != "" {
 			q = q.Where("type = ?", artifactType)
 		}
-		if severity != "" {
-			q = q.Where("severity = ?", severity)
+
+		// Проверяем наличие столбца threat_level перед его использованием
+		hasThreatLevel := r.hasThreatLevelColumn(ctx)
+		if severity != "" && hasThreatLevel {
+			if level, ok := severityMap[strings.ToLower(severity)]; ok {
+				q = q.Where("threat_level >= ?", level)
+			}
 		}
 
-		// Получаем общее количество записей для пагинации
-		total, err := q.Count(ctx)
+		// Подсчет общего количества записей
+		countQuery := q.Clone()
+		total, err := countQuery.Count(ctx)
 		if err != nil {
-			return nil, 0, err
+			return nil, 0, fmt.Errorf("count failed: %w", err)
 		}
 
-		// Применяем сортировку и пагинацию
+		// Основной запрос с данными
 		err = q.
 			Order("timestamp DESC").
 			Limit(perPage).
 			Offset(offset).
 			Scan(ctx)
+		if err != nil {
+			return nil, 0, fmt.Errorf("query failed: %w", err)
+		}
 
-		return artifacts, total, err
+		// Преобразуем WindowsArtifact в Artifact
+		artifacts := make([]*models.Artifact, len(windowsArtifacts))
+		for i, wa := range windowsArtifacts {
+			artifacts[i] = &models.Artifact{
+				ID:        wa.ID,
+				HostID:    wa.HostID,
+				Type:      wa.Type,
+				Name:      wa.Path, // Используем Path в качестве Name
+				Path:      wa.Path,
+				Size:      wa.Size,
+				Hash:      wa.Hash,
+				Timestamp: wa.Timestamp,
+				// Если есть ThreatLevel, добавьте его
+				ThreatLevel: wa.ThreatLevel,
+			}
+		}
+
+		return artifacts, total, nil
 	}
-
 	// Поиск через Elasticsearch
 	esQuery := map[string]interface{}{
 		"query": map[string]interface{}{
@@ -265,5 +325,5 @@ func (r *ArtifactRepository) SearchArtifacts(
 		artifacts[i] = hit.Source
 	}
 
-	return artifacts, result.Hits.Total.Value, nil
+	return []*models.Artifact{}, 0, nil
 }

@@ -2,6 +2,7 @@ package persistence
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 
@@ -128,6 +129,37 @@ type ThreatReport struct {
 	Indicators           []string  `bun:"indicators,type:jsonb"`
 }
 
+func AddCategoryColumnToAttackPatterns(ctx context.Context, db *bun.DB) error {
+	// Проверяем наличие столбца category
+	var exists bool
+	err := db.NewRaw(`
+        SELECT EXISTS (
+            SELECT 1 
+            FROM information_schema.columns 
+            WHERE table_name = 'attack_patterns' 
+            AND column_name = 'category'
+        )
+    `).Scan(ctx, &exists)
+
+	if err != nil {
+		return fmt.Errorf("failed to check if category column exists: %w", err)
+	}
+
+	if !exists {
+		// Добавляем столбец category, если он не существует
+		_, err = db.NewRaw(`
+            ALTER TABLE attack_patterns 
+            ADD COLUMN category VARCHAR
+        `).Exec(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to add category column: %w", err)
+		}
+		log.Println("Added category column to attack_patterns table")
+	}
+
+	return nil
+}
+
 // RunMigrations запускает миграции базы данных
 func RunMigrations(ctx context.Context, db *bun.DB) error {
 	models := []interface{}{
@@ -149,6 +181,33 @@ func RunMigrations(ctx context.Context, db *bun.DB) error {
 			Exec(ctx); err != nil {
 			return err
 		}
+	}
+
+	// Проверяем наличие столбца threat_level
+	var exists bool
+	err := db.NewRaw(`
+        SELECT EXISTS (
+            SELECT 1 
+            FROM information_schema.columns 
+            WHERE table_name = 'windows_artifacts' 
+            AND column_name = 'threat_level'
+        )
+    `).Scan(ctx, &exists)
+
+	if err == nil && !exists {
+		// Добавляем столбец threat_level, если он не существует
+		_, err = db.NewRaw(`
+            ALTER TABLE windows_artifacts 
+            ADD COLUMN IF NOT EXISTS threat_level INT DEFAULT 0
+        `).Exec(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to add threat_level column: %w", err)
+		}
+		log.Println("Added threat_level column to windows_artifacts table")
+	}
+
+	if err := AddCategoryColumnToAttackPatterns(ctx, db); err != nil {
+		return err
 	}
 
 	log.Println("Migrations completed successfully")

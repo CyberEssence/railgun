@@ -95,17 +95,21 @@ type NetworkTraffic struct {
 
 // WindowsArtifact представляет системный артефакт Windows
 type WindowsArtifact struct {
-	ID          int64                  `json:"id"`
-	HostID      string                 `json:"host_id"`
-	Timestamp   time.Time              `json:"timestamp"`
-	Type        string                 `json:"type"` // registry, file, process, etc.
-	Path        string                 `json:"path"`
-	Value       string                 `json:"value"`
-	Size        int64                  `json:"size"`
-	Hash        string                 `json:"hash"`
-	Owner       string                 `json:"owner"`
-	Permissions string                 `json:"permissions"`
-	Metadata    map[string]interface{} `json:"metadata"`
+	bun.BaseModel `bun:"table:windows_artifacts,alias:wa"`
+
+	ID          int64                  `bun:"id,pk,autoincrement" json:"id"`
+	HostID      string                 `bun:"host_id,notnull" json:"host_id"`
+	Timestamp   time.Time              `bun:"timestamp,notnull" json:"timestamp"`
+	Type        string                 `bun:"type,notnull" json:"type"`
+	Path        string                 `bun:"path" json:"path"`
+	Value       string                 `bun:"value" json:"value"`
+	Size        int64                  `bun:"size" json:"size"`
+	Hash        string                 `bun:"hash" json:"hash"`
+	Owner       string                 `bun:"owner" json:"owner"`
+	Permissions string                 `bun:"permissions" json:"permissions"`
+	Metadata    map[string]interface{} `bun:"metadata,type:jsonb" json:"metadata"`
+	// Добавьте threat_level, если он нужен
+	ThreatLevel int `bun:"threat_level" json:"threat_level"`
 }
 
 // User представляет пользователя системы
@@ -154,13 +158,16 @@ type ThreatReport struct {
 
 // AttackPattern модель шаблона атаки
 type AttackPattern struct {
-	ID          int64     `json:"id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	MITREID     string    `json:"mitre_id"`
-	Severity    string    `json:"severity"` // low, medium, high, critical
-	Indicators  []string  `json:"indicators"`
-	CreatedAt   time.Time `json:"created_at"`
+	bun.BaseModel `bun:"table:attack_patterns,alias:ap"`
+
+	ID          int64     `bun:"id,pk,autoincrement" json:"id"`
+	Name        string    `bun:"name,unique" json:"name"`
+	Description string    `bun:"description" json:"description"`
+	MITREID     string    `bun:"mitre_id" json:"mitre_id"`
+	Category    string    `bun:"category" json:"category"` // Добавлено поле category
+	Severity    string    `bun:"severity" json:"severity"`
+	Indicators  []string  `bun:"indicators,type:jsonb" json:"indicators"`
+	CreatedAt   time.Time `bun:"created_at,nullzero,default:current_timestamp" json:"created_at"`
 }
 
 // NetworkLog представляет сетевой лог

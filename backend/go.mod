@@ -1,6 +1,6 @@
 module railgun-core
 
-go 1.24.1
+go 1.24.3
 
 require (
 	github.com/gin-contrib/cors v1.7.4

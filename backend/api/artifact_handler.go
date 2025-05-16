@@ -1,6 +1,8 @@
 package api
 
 import (
+	"database/sql"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -59,15 +61,13 @@ func (h *ArtifactHandler) GetArtifactByID(c *gin.Context) {
 		return
 	}
 
-	// Получаем артефакт
 	artifact, err := h.artifactRepo.GetArtifactByID(c, id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	if artifact == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Artifact not found"})
+		if errors.Is(err, sql.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Artifact not found"})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		}
 		return
 	}
 
