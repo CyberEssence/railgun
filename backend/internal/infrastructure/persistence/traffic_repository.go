@@ -3,6 +3,7 @@ package persistence
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -62,24 +63,38 @@ func (r *TrafficRepository) GetTrafficByHost(ctx context.Context, hostID string,
 }
 
 func (r *TrafficRepository) GetTrafficStats(ctx context.Context, hostID string, from, to time.Time) (*models.TrafficStats, error) {
-	var stats *models.TrafficStats
+	var stats struct {
+		TotalBytesSent   int64   `bun:"total_bytes_sent"`
+		TotalBytesRecv   int64   `bun:"total_bytes_recv"`
+		TotalPacketsSent int64   `bun:"total_packets_sent"`
+		TotalPacketsRecv int64   `bun:"total_packets_recv"`
+		AverageDuration  float64 `bun:"average_duration"`
+	}
+
 	query := `
-		SELECT 
-			COALESCE(SUM(bytes_sent), 0) as total_bytes_sent,
-			COALESCE(SUM(bytes_recv), 0) as total_bytes_recv,
-			COALESCE(SUM(packets_sent), 0) as total_packets_sent,
-			COALESCE(SUM(packets_recv), 0) as total_packets_recv,
-			COALESCE(AVG(duration), 0) as average_duration
-		FROM network_traffic
-		WHERE host_id = ? AND timestamp BETWEEN ? AND ?
-	`
+        SELECT 
+            COALESCE(SUM(bytes_sent), 0) as total_bytes_sent,
+            COALESCE(SUM(bytes_recv), 0) as total_bytes_recv,
+            COALESCE(SUM(packets_sent), 0) as total_packets_sent,
+            COALESCE(SUM(packets_recv), 0) as total_packets_recv,
+            COALESCE(AVG(duration), 0) as average_duration
+        FROM network_traffic
+        WHERE host_id = ? AND timestamp BETWEEN ? AND ?
+    `
 
 	err := r.db.NewRaw(query, hostID, from, to).Scan(ctx, &stats)
 	if err != nil {
-		return stats, fmt.Errorf("query failed: %w", err)
+		return nil, fmt.Errorf("query failed: %w", err)
 	}
 
-	return stats, nil
+	// Копируем значения в результат
+	return &models.TrafficStats{
+		TotalBytesSent:   stats.TotalBytesSent,
+		TotalBytesRecv:   stats.TotalBytesRecv,
+		TotalPacketsSent: stats.TotalPacketsSent,
+		TotalPacketsRecv: stats.TotalPacketsRecv,
+		AverageDuration:  stats.AverageDuration,
+	}, nil
 }
 
 func (r *TrafficRepository) SaveTraffic(ctx context.Context, traffic models.NetworkTraffic) error {
@@ -217,6 +232,23 @@ func (r *TrafficRepository) IsolateHost(ctx context.Context, hostID string, reas
 		Scan(ctx)
 
 	if err != nil {
+		if err == sql.ErrNoRows {
+			// Создаем хост, если он не существует
+			host = models.Host{
+				ID:          hostID,
+				Hostname:    "auto-created",
+				IPAddress:   "",
+				LastSeen:    time.Now(),
+				OSVersion:   "unknown",
+				Status:      "isolated", // Сразу устанавливаем статус "isolated"
+				Description: reason,
+			}
+			_, err = r.db.NewInsert().Model(&host).Exec(ctx)
+			if err != nil {
+				return fmt.Errorf("failed to create host: %w", err)
+			}
+			return nil // Хост создан и уже изолирован
+		}
 		return fmt.Errorf("host not found: %w", err)
 	}
 
@@ -230,9 +262,6 @@ func (r *TrafficRepository) IsolateHost(ctx context.Context, hostID string, reas
 	if err != nil {
 		return fmt.Errorf("failed to update host status: %w", err)
 	}
-
-	// Здесь может быть дополнительная логика изоляции
-	// например, отправка команд на фаервол или другие системы
 
 	return nil
 }
