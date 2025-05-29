@@ -2,11 +2,13 @@ package api
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"railgun-core/internal/domain"
+	"railgun-core/internal/models"
 )
 
 type DashboardHandler struct {
@@ -39,6 +41,20 @@ func (h *DashboardHandler) GetDashboardStats(c *gin.Context) {
 		return
 	}
 
+	threatStats, err := h.aiService.GetThreatStats(c, from, to)
+	if err != nil {
+		// Если таблицы нет, возвращаем нулевую статистику вместо ошибки
+		if strings.Contains(err.Error(), "отношение \"threats\" не существует") {
+			threatStats = &models.ThreatStats{}
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":   "Failed to get threat stats",
+				"details": err.Error(),
+			})
+			return
+		}
+	}
+
 	// Получаем статистику трафика
 	trafficStats, err := h.trafficRepo.GetDashboardStats(c, from, to)
 	if err != nil {
@@ -47,7 +63,7 @@ func (h *DashboardHandler) GetDashboardStats(c *gin.Context) {
 	}
 
 	// Получаем статистику угроз
-	threatStats, err := h.aiService.GetThreatStats(c, from, to)
+	threatStats, err = h.aiService.GetThreatStats(c, from, to)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get threat stats: " + err.Error()})
 		return

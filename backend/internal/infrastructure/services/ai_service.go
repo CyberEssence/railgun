@@ -444,22 +444,50 @@ func (s *AIService) calculateThreatLevel(data []string) int {
 }
 
 func (s *AIService) GetThreatStats(ctx context.Context, from, to time.Time) (*models.ThreatStats, error) {
-	stats := new(models.ThreatStats)
+	stats := &models.ThreatStats{}
 
-	// Основной запрос для получения всей статистики за один вызов
-	err := s.db.NewSelect().
-		Model((*models.Threat)(nil)).
-		ColumnExpr("COUNT(*) AS total").
-		ColumnExpr("COUNT(*) FILTER (WHERE severity = 'critical') AS critical").
-		ColumnExpr("COUNT(*) FILTER (WHERE severity = 'high') AS high").
-		ColumnExpr("COUNT(*) FILTER (WHERE severity = 'medium') AS medium").
-		ColumnExpr("COUNT(*) FILTER (WHERE severity = 'low') AS low").
-		ColumnExpr("COUNT(*) FILTER (WHERE created_at >= ?) AS new_last_24h", time.Now().Add(-24*time.Hour)).
-		ColumnExpr("COUNT(*) FILTER (WHERE resolved = true) AS resolved").
-		Where("created_at BETWEEN ? AND ?", from, to).
-		Scan(ctx, stats)
+	// Проверяем существование таблицы
+	var tableExists bool
+	err := s.db.NewRaw(`
+        SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            AND table_name = 'threats'
+        )`).Scan(ctx, &tableExists)
+
+	if err != nil || !tableExists {
+		return stats, nil // Возвращаем пустую статистику, если таблицы нет
+	}
+
+	// Получаем общее количество угроз за период
+	err = s.db.NewRaw(`
+        SELECT COUNT(*) FROM threats 
+        WHERE timestamp BETWEEN ? AND ?`, from, to).Scan(ctx, &stats.Total)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get threat stats: %w", err)
+		return nil, fmt.Errorf("failed to get total threats: %w", err)
+	}
+
+	// Получаем количество угроз по уровням серьезности
+	err = s.db.NewRaw(`
+        SELECT 
+            COUNT(*) FILTER (WHERE severity = 'critical') AS critical,
+            COUNT(*) FILTER (WHERE severity = 'high') AS high,
+            COUNT(*) FILTER (WHERE severity = 'medium') AS medium,
+            COUNT(*) FILTER (WHERE severity = 'low') AS low,
+            COUNT(*) FILTER (WHERE resolved = true) AS resolved
+        FROM threats 
+        WHERE timestamp BETWEEN ? AND ?`, from, to).Scan(ctx, stats)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get threat levels: %w", err)
+	}
+
+	// Получаем количество новых угроз за последние 24 часа
+	last24h := time.Now().Add(-24 * time.Hour)
+	err = s.db.NewRaw(`
+        SELECT COUNT(*) FROM threats 
+        WHERE timestamp BETWEEN ? AND ?`, last24h, to).Scan(ctx, &stats.NewLast24h)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get new threats: %w", err)
 	}
 
 	return stats, nil

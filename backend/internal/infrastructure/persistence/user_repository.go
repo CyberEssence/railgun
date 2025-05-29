@@ -2,6 +2,8 @@ package persistence
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -51,14 +53,37 @@ func (r *UserRepository) GetUserByUsername(ctx context.Context, username string)
 }
 
 func (r *UserRepository) CreateUser(ctx context.Context, user models.User) error {
-	// Хеширование пароля перед сохранением
+	// Check if user with this email already exists
+	var existingUser models.User
+	err := r.db.NewSelect().Model(&existingUser).
+		Where("email = ?", user.Email).
+		Limit(1).
+		Scan(ctx)
+
+	if err == nil {
+		return fmt.Errorf("user with this email already exists")
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("failed to check for existing user: %w", err)
+	}
+
+	// Check if user with this username already exists
+	err = r.db.NewSelect().Model(&existingUser).
+		Where("username = ?", user.Username).
+		Limit(1).
+		Scan(ctx)
+
+	if err == nil {
+		return fmt.Errorf("user with this username already exists")
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("failed to check for existing user: %w", err)
+	}
+
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.PasswordHash), bcrypt.DefaultCost)
 	if err != nil {
 		return fmt.Errorf("failed to hash password: %w", err)
 	}
 	user.PasswordHash = string(hashedPassword)
 
-	// Установка времени создания
 	if user.CreatedAt.IsZero() {
 		user.CreatedAt = time.Now()
 	}

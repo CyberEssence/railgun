@@ -1,6 +1,8 @@
 package api
 
 import (
+	"bytes"
+	"io"
 	"log"
 	"net/http"
 	"time"
@@ -124,33 +126,40 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 // Verify2FA проверяет 2FA токен и выдает JWT токен
 func (h *AuthHandler) Verify2FA(c *gin.Context) {
+	// Логируем входящий запрос
+	body, _ := c.GetRawData()
+	log.Printf("Incoming 2FA verification request: %s", string(body))
+	c.Request.Body = io.NopCloser(bytes.NewBuffer(body)) // Возвращаем body для повторного чтения
+
 	var req struct {
 		UserID int64  `json:"user_id" binding:"required"`
 		Token  string `json:"token" binding:"required"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		// Добавьте логирование для отладки
 		log.Printf("Invalid request format: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid request format",
+			"details": gin.H{
+				"expected_fields": []string{"user_id (number)", "token (string)"},
+				"error":           err.Error(),
+			},
+		})
 		return
 	}
 
-	// Добавьте логирование для отладки
 	log.Printf("Verifying 2FA token for user %d", req.UserID)
 
-	// Проверяем 2FA токен
 	valid, err := h.twoFAService.Validate2FAToken(c, req.Token, req.UserID)
 	if err != nil || !valid {
-		// Добавьте логирование для отладки
 		log.Printf("Token validation failed: %v", err)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid 2FA token"})
 		return
 	}
 
-	// Генерируем JWT токен
 	accessToken, refreshToken, expiresIn, err := h.generateTokens(req.UserID)
 	if err != nil {
+		log.Printf("Token generation failed: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate tokens"})
 		return
 	}

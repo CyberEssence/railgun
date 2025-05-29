@@ -78,8 +78,8 @@ type Host struct {
 
 // NetworkTraffic представляет запись о сетевом трафике
 type NetworkTraffic struct {
-	bun.BaseModel `bun:"table:network_traffic,alias:nt"`
-	ID            int64     `json:"id"`
+	bun.BaseModel `bun:"table:network_traffic"`
+	ID            string    `bun:"id,pk,default:gen_random_uuid()"`
 	HostID        string    `json:"host_id"`
 	Timestamp     time.Time `json:"timestamp"`
 	SrcIP         string    `json:"src_ip"`
@@ -173,7 +173,7 @@ type AttackPattern struct {
 
 // NetworkLog представляет сетевой лог
 type NetworkLog struct {
-	ID            int64     `json:"id"`
+	ID            string    `bun:"id,pk,default:gen_random_uuid()"`
 	SourceIP      string    `json:"source_ip"`
 	DestinationIP string    `json:"destination_ip"`
 	Protocol      string    `json:"protocol"`
