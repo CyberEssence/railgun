@@ -3,67 +3,61 @@ import {
   Box,
   Paper,
   Typography,
-  TextField,
-  CircularProgress,
-  Alert,
   Grid,
   Card,
   CardContent,
-  CardHeader,
-  Button
+  CircularProgress,
+  Alert,
+  Button,
+  Divider
 } from '@mui/material';
-import { Home, Storage, BarChart, Refresh } from '@mui/icons-material';
+import { 
+  Refresh,
+  Security,
+  NetworkCheck,
+  Storage,
+  Warning,
+  CheckCircle,
+  Error
+} from '@mui/icons-material';
+import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 export const Dashboard = () => {
-  const [stats, setStats] = useState({
-    totalEvents: 0,
-    activeConnections: 0,
-    suspiciousActivity: 0,
-    systemHealth: 'healthy'
-  });
-  const [trafficStats, setTrafficStats] = useState({
-    total_bytes_sent: 0,
-    total_bytes_recv: 0,
-    total_packets_sent: 0,
-    total_packets_recv: 0,
-    by_protocol: {},
-    traffic_over_time: []
-  });
+  const [dashboardData, setDashboardData] = useState(null);
+  const [trafficData, setTrafficData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [hostId, setHostId] = useState('');
+  const { authToken } = useAuth();
   const navigate = useNavigate();
 
   const fetchDashboardData = async () => {
     setLoading(true);
     setError(null);
+    
     try {
-      const response = await fetch('http://localhost:8080/api/dashboard/stats');
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
-      }
-      const dashboardData = await response.json();
-      setStats(dashboardData);
-      
-      if (hostId) {
-        // Add date range parameters (e.g., last 7 days)
-        const to = new Date();
-        const from = new Date();
-        from.setDate(from.getDate() - 7);
-        
-        const trafficResponse = await fetch(
-          `http://localhost:8080/api/traffic/stats/host/${hostId}?from=${from.toISOString()}&to=${to.toISOString()}`
-        );
-        
-        if (!trafficResponse.ok) {
-          const errorText = await trafficResponse.text();
-          throw new Error(`HTTP error! status: ${trafficResponse.status}, message: ${errorText}`);
+      // Fetch dashboard stats
+      const statsResponse = await fetch('http://localhost:8080/api/dashboard/stats', {
+        headers: {
+          'Authorization': `Bearer ${authToken}`
         }
-        const trafficData = await trafficResponse.json();
-        setTrafficStats(trafficData);  // Fixed typo here
-      }
+      });
+      
+      if (!statsResponse.ok) throw new Error('Failed to fetch dashboard stats');
+      const stats = await statsResponse.json();
+      setDashboardData(stats);
+
+      // Fetch recent traffic
+      const trafficResponse = await fetch('http://localhost:8080/api/traffic/recent', {
+        headers: {
+          'Authorization': `Bearer ${authToken}`
+        }
+      });
+      
+      if (!trafficResponse.ok) throw new Error('Failed to fetch traffic data');
+      const traffic = await trafficResponse.json();
+      setTrafficData(traffic);
     } catch (err) {
       setError(err.message);
       console.error('Error fetching dashboard data:', err);
@@ -73,187 +67,258 @@ export const Dashboard = () => {
   };
 
   useEffect(() => {
-    fetchDashboardData();
-  }, [hostId]);
-
-
-  const handleNavigate = (path) => {
-    navigate(path);
-  };
+    if (authToken) {
+      fetchDashboardData();
+    }
+  }, [authToken]);
 
   const formatBytes = (bytes) => {
     if (bytes === 0) return '0 Bytes';
-    
     const k = 1024;
     const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2) + ' ' + sizes[i]);
+  };
+
+  const getHealthIcon = () => {
+    if (!dashboardData) return <CircularProgress size={20} />;
     
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    const health = dashboardData.traffic?.system_health || 'healthy';
+    switch (health) {
+      case 'critical':
+        return <Error color="error" fontSize="large" />;
+      case 'warning':
+        return <Warning color="warning" fontSize="large" />;
+      default:
+        return <CheckCircle color="success" fontSize="large" />;
+    }
   };
 
   return (
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4">SIEM System Overview</Typography>
+        <Typography variant="h4">Dashboard Overview</Typography>
         <Button 
           variant="contained" 
           startIcon={<Refresh />}
           onClick={fetchDashboardData}
+          disabled={loading}
         >
           Refresh
         </Button>
       </Box>
 
-      {/* Search bar */}
-      <Paper sx={{ p: 2, mb: 3 }}>
-        <TextField
-          fullWidth
-          label="Host ID"
-          value={hostId}
-          onChange={(e) => setHostId(e.target.value)}
-          margin="normal"
-          placeholder="Enter host identifier"
-        />
-      </Paper>
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {error}
+        </Alert>
+      )}
 
-      {/* General statistics */}
-      <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardHeader 
-              title="Total Events" 
-              titleTypographyProps={{ variant: 'h6' }}
-            />
-            <CardContent>
-              <Typography variant="h6">{stats.totalEvents.toLocaleString()}</Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardHeader 
-              title="Active Connections" 
-              titleTypographyProps={{ variant: 'h6' }}
-            />
-            <CardContent>
-              <Typography variant="h6">{stats.activeConnections}</Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardHeader 
-              title="Suspicious Activity" 
-              titleTypographyProps={{ variant: 'h6' }}
-            />
-            <CardContent>
-              <Typography variant="h6">{stats.suspiciousActivity}</Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardHeader 
-              title="System Status" 
-              titleTypographyProps={{ variant: 'h6' }}
-            />
-            <CardContent>
-              <Typography variant="h6">
-                {stats.systemHealth === 'healthy' ? '✅ Healthy' : '⚠️ Issues'}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      {/* Detailed statistics */}
-      {hostId && (
-        <Paper sx={{ p: 2, mb: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            Traffic Statistics for {hostId}
-          </Typography>
-          
-          <Grid container spacing={3}>
-            <Grid item xs={12} md={6}>
-              <Card>
-                <CardHeader 
-                  title="Data Transfer" 
-                  titleTypographyProps={{ variant: 'subtitle1' }}
-                />
-                <CardContent>
-                  <Typography variant="body1">
-                    Sent: {formatBytes(trafficStats.total_bytes_sent || 0)}
+      {loading && !dashboardData ? (
+        <Box display="flex" justifyContent="center" p={4}>
+          <CircularProgress />
+        </Box>
+      ) : (
+        <>
+          <Grid container spacing={3} sx={{ mb: 3 }}>
+            {/* System Health */}
+            <Grid item xs={12} md={4}>
+              <Card sx={{ height: '100%' }}>
+                <CardContent sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  {getHealthIcon()}
+                  <Typography variant="h6" sx={{ mt: 1 }}>
+                    System Status
                   </Typography>
-                  <Typography variant="body1">
-                    Received: {formatBytes(trafficStats.total_bytes_recv || 0)}
+                  <Typography variant="h4" sx={{ mt: 1 }}>
+                    {dashboardData?.traffic?.system_health?.toUpperCase() || 'HEALTHY'}
                   </Typography>
                 </CardContent>
               </Card>
             </Grid>
-            <Grid item xs={12} md={6}>
-              <Card>
-                <CardHeader 
-                  title="Packet Count" 
-                  titleTypographyProps={{ variant: 'subtitle1' }}
-                />
+
+            {/* Events */}
+            <Grid item xs={12} md={4}>
+              <Card sx={{ height: '100%' }}>
                 <CardContent>
-                  <Typography variant="body1">
-                    Sent: {(trafficStats.total_packets_sent || 0).toLocaleString()} packets
+                  <Typography variant="h6" gutterBottom>
+                    Events
                   </Typography>
-                  <Typography variant="body1">
-                    Received: {(trafficStats.total_packets_recv || 0).toLocaleString()} packets
+                  <Typography variant="h3">
+                    {dashboardData?.traffic?.total_events?.toLocaleString() || 0}
+                  </Typography>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Total events in last 24h
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* Active Connections */}
+            <Grid item xs={12} md={4}>
+              <Card sx={{ height: '100%' }}>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Active Connections
+                  </Typography>
+                  <Typography variant="h3">
+                    {dashboardData?.traffic?.active_connections?.toLocaleString() || 0}
+                  </Typography>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Current active connections
                   </Typography>
                 </CardContent>
               </Card>
             </Grid>
           </Grid>
-        </Paper>
-      )}
 
-      {/* Quick access cards */}
-      <Grid container spacing={2}>
-        <Grid item xs={12} sm={4}>
-          <Card sx={{ cursor: 'pointer' }} onClick={() => handleNavigate('/')}>
-            <CardContent sx={{ pt: 2 }}>
-              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <Home sx={{ fontSize: 48, mb: 2 }} />
-                <Typography variant="subtitle1">Dashboard</Typography>
-              </Box>
+          {/* Threat Overview */}
+          <Card sx={{ mb: 3 }}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Threat Overview
+              </Typography>
+              <Grid container spacing={3}>
+                <Grid item xs={12} md={6}>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart
+                      data={[
+                        { name: 'Critical', value: dashboardData?.threats?.Critical || 0 },
+                        { name: 'High', value: dashboardData?.threats?.High || 0 },
+                        { name: 'Medium', value: dashboardData?.threats?.Medium || 0 },
+                        { name: 'Low', value: dashboardData?.threats?.Low || 0 }
+                      ]}
+                      margin={{
+                        top: 5,
+                        right: 30,
+                        left: 20,
+                        bottom: 5,
+                      }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" />
+                      <YAxis />
+                      <Tooltip />
+                      <Legend />
+                      <Bar dataKey="value" fill="#8884d8" name="Threat Count" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Grid container spacing={2}>
+                    <Grid item xs={6}>
+                      <Paper sx={{ p: 2, textAlign: 'center' }}>
+                        <Typography variant="h3" color="error">
+                          {dashboardData?.threats?.Critical || 0}
+                        </Typography>
+                        <Typography variant="subtitle1">
+                          Critical Threats
+                        </Typography>
+                      </Paper>
+                    </Grid>
+                    <Grid item xs={6}>
+                      <Paper sx={{ p: 2, textAlign: 'center' }}>
+                        <Typography variant="h3" color="warning.main">
+                          {dashboardData?.threats?.High || 0}
+                        </Typography>
+                        <Typography variant="subtitle1">
+                          High Threats
+                        </Typography>
+                      </Paper>
+                    </Grid>
+                    <Grid item xs={6}>
+                      <Paper sx={{ p: 2, textAlign: 'center' }}>
+                        <Typography variant="h3" color="info.main">
+                          {dashboardData?.threats?.Medium || 0}
+                        </Typography>
+                        <Typography variant="subtitle1">
+                          Medium Threats
+                        </Typography>
+                      </Paper>
+                    </Grid>
+                    <Grid item xs={6}>
+                      <Paper sx={{ p: 2, textAlign: 'center' }}>
+                        <Typography variant="h3" color="success.main">
+                          {dashboardData?.threats?.Low || 0}
+                        </Typography>
+                        <Typography variant="subtitle1">
+                          Low Threats
+                        </Typography>
+                      </Paper>
+                    </Grid>
+                  </Grid>
+                </Grid>
+              </Grid>
             </CardContent>
           </Card>
-        </Grid>
-        <Grid item xs={12} sm={4}>
-          <Card sx={{ cursor: 'pointer' }} onClick={() => handleNavigate('/traffic')}>
-            <CardContent sx={{ pt: 2 }}>
-              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <BarChart sx={{ fontSize: 48, mb: 2 }} />
-                <Typography variant="subtitle1">Network Traffic</Typography>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={4}>
-          <Card sx={{ cursor: 'pointer' }} onClick={() => handleNavigate('/artifacts')}>
-            <CardContent sx={{ pt: 2 }}>
-              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <Storage sx={{ fontSize: 48, mb: 2 }} />
-                <Typography variant="subtitle1">Artifacts</Typography>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
 
-      {/* Loading and error handling */}
-      {error && (
-        <Alert severity="error" sx={{ mt: 2 }}>
-          {error}
-        </Alert>
-      )}
-      {loading && (
-        <Box display="flex" justifyContent="center" p={4}>
-          <CircularProgress />
-        </Box>
+          {/* Network Traffic */}
+          <Card sx={{ mb: 3 }}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Network Traffic (Last 24h)
+              </Typography>
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart
+                  data={trafficData}
+                  margin={{
+                    top: 5,
+                    right: 30,
+                    left: 20,
+                    bottom: 5,
+                  }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="timestamp" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Line type="monotone" dataKey="bytes_sent" stroke="#8884d8" name="Bytes Sent" />
+                  <Line type="monotone" dataKey="bytes_recv" stroke="#82ca9d" name="Bytes Received" />
+                </LineChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          {/* Quick Actions */}
+          <Typography variant="h6" gutterBottom>
+            Quick Actions
+          </Typography>
+          <Grid container spacing={2} sx={{ mb: 3 }}>
+            <Grid item xs={12} sm={4}>
+              <Button 
+                variant="contained" 
+                startIcon={<Security />}
+                fullWidth
+                onClick={() => navigate('/threats')}
+                sx={{ py: 2 }}
+              >
+                View Threats
+              </Button>
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <Button 
+                variant="contained" 
+                startIcon={<NetworkCheck />}
+                fullWidth
+                onClick={() => navigate('/traffic')}
+                sx={{ py: 2 }}
+              >
+                Analyze Traffic
+              </Button>
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <Button 
+                variant="contained" 
+                startIcon={<Storage />}
+                fullWidth
+                onClick={() => navigate('/artifacts')}
+                sx={{ py: 2 }}
+              >
+                Explore Artifacts
+              </Button>
+            </Grid>
+          </Grid>
+        </>
       )}
     </Box>
   );
