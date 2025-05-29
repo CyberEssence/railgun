@@ -1,31 +1,17 @@
 import React from 'react';
+import { Box, AppBar, Toolbar, Typography, Button, IconButton, Menu, MenuItem, Avatar } from '@mui/material';
 import { 
-  AppBar, 
-  Toolbar, 
-  Typography, 
-  Button, 
-  Box, 
-  IconButton,
-  Avatar,
-  Menu,
-  MenuItem
-} from '@mui/material';
-import { 
-  Home, 
-  NetworkCheck, 
-  Storage, 
-  Security,
-  AccountCircle,
-  Login,
-  Logout
+  Home, NetworkCheck, Storage, Security, Timeline, 
+  Science, BugReport, CloudUpload, Logout 
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export const Navbar = () => {
   const navigate = useNavigate();
-  const { authToken, user, logout } = useAuth();
+  const { user, logout } = useAuth();
   const [anchorEl, setAnchorEl] = React.useState(null);
+  const open = Boolean(anchorEl);
 
   const handleMenu = (event) => {
     setAnchorEl(event.currentTarget);
@@ -36,47 +22,40 @@ export const Navbar = () => {
   };
 
   return (
-    <AppBar position="static" sx={{ mb: 4 }}>
-      <Toolbar>
-        <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-          SIEM Dashboard
-        </Typography>
-        
-        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-          <Button 
-            color="inherit" 
-            startIcon={<Home />} 
-            onClick={() => navigate('/')}
-            sx={{ mr: 1 }}
-          >
-            Dashboard
+    <Box sx={{ flexGrow: 1 }}>
+      <AppBar position="static" elevation={0}>
+        <Toolbar>
+          <Typography variant="h6" component="div" sx={{ flexGrow: 1, fontWeight: 'bold' }}>
+            SIEM Dashboard
+          </Typography>
+          
+          <Button color="inherit" startIcon={<Home />} onClick={() => navigate('/')}>
+            Обзор
           </Button>
-          <Button 
-            color="inherit" 
-            startIcon={<NetworkCheck />} 
-            onClick={() => navigate('/traffic')}
-            sx={{ mr: 1 }}
-          >
-            Traffic
+          <Button color="inherit" startIcon={<NetworkCheck />} onClick={() => navigate('/traffic')}>
+            Трафик
           </Button>
-          <Button 
-            color="inherit" 
-            startIcon={<Storage />} 
-            onClick={() => navigate('/artifacts')}
-            sx={{ mr: 1 }}
-          >
-            Artifacts
-          </Button>
-          <Button 
-            color="inherit" 
-            startIcon={<Security />} 
-            onClick={() => navigate('/threats')}
-            sx={{ mr: 2 }}
-          >
-            Threats
+          <Button color="inherit" startIcon={<Storage />} onClick={() => navigate('/artifacts')}>
+            Артефакты
           </Button>
           
-          {authToken ? (
+          <Button color="inherit" startIcon={<Security />} onClick={() => navigate('/attack-patterns')}>
+            Шаблоны атак
+          </Button>
+          <Button color="inherit" startIcon={<Timeline />} onClick={() => navigate('/apt-timeline')}>
+            APT Timeline
+          </Button>
+          <Button color="inherit" startIcon={<Science />} onClick={() => navigate('/ai-models')}>
+            AI Модели
+          </Button>
+          <Button color="inherit" startIcon={<BugReport />} onClick={() => navigate('/counter-attack')}>
+            Контратака
+          </Button>
+          <Button color="inherit" startIcon={<CloudUpload />} onClick={() => navigate('/file-scanner')}>
+            Сканер файлов
+          </Button>
+
+          {user && (
             <div>
               <IconButton
                 size="large"
@@ -86,9 +65,7 @@ export const Navbar = () => {
                 onClick={handleMenu}
                 color="inherit"
               >
-                <Avatar sx={{ width: 32, height: 32 }}>
-                  {user?.username?.charAt(0).toUpperCase() || <AccountCircle />}
-                </Avatar>
+                <Avatar sx={{ width: 32, height: 32 }}>{user.username ? user.username.charAt(0).toUpperCase() : 'U'}</Avatar>
               </IconButton>
               <Menu
                 id="menu-appbar"
@@ -102,28 +79,18 @@ export const Navbar = () => {
                   vertical: 'top',
                   horizontal: 'right',
                 }}
-                open={Boolean(anchorEl)}
+                open={open}
                 onClose={handleClose}
               >
-                <MenuItem onClick={() => { navigate('/profile'); handleClose(); }}>
-                  Profile
-                </MenuItem>
+                <MenuItem onClick={() => { navigate('/profile'); handleClose(); }}>Профиль</MenuItem>
                 <MenuItem onClick={() => { logout(); handleClose(); }}>
-                  <Logout sx={{ mr: 1 }} /> Logout
+                  <Logout sx={{ mr: 1 }} /> Выйти
                 </MenuItem>
               </Menu>
             </div>
-          ) : (
-            <Button 
-              color="inherit" 
-              startIcon={<Login />} 
-              onClick={() => navigate('/login')}
-            >
-              Login
-            </Button>
           )}
-        </Box>
-      </Toolbar>
-    </AppBar>
+        </Toolbar>
+      </AppBar>
+    </Box>
   );
 };

@@ -1,49 +1,51 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-  const [authToken, setAuthToken] = useState(null);
   const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
-    const token = localStorage.getItem('authToken');
-    const userData = localStorage.getItem('user');
-    if (token && userData) {
-      setAuthToken(token);
-      setUser(JSON.parse(userData));
+    // Проверка аутентификации при загрузке
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      setUser(JSON.parse(storedUser));
     }
+    setLoading(false);
   }, []);
 
   const login = async (username, password) => {
     try {
       const response = await fetch('http://localhost:8080/api/auth/login', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ username, password }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
       });
-
+      
+      if (!response.ok) throw new Error(await response.text());
+      
       const data = await response.json();
       
-      if (response.ok) {
-        if (data.requiresTwoFA) {
-          return { requiresTwoFA: true, userId: data.userId };
-        }
-
-        localStorage.setItem('authToken', data.access_token);
-        localStorage.setItem('user', JSON.stringify({ id: data.userId }));
-        setAuthToken(data.access_token);
-        setUser({ id: data.userId });
-        return { success: true };
-      } else {
-        throw new Error(data.error || 'Login failed');
+      // Если требуется 2FA
+      if (data.requiresTwoFA) {
+        return { requires2FA: true, userId: data.userId, token: data.twoFAToken };
       }
-    } catch (error) {
-      throw error;
+      
+      // Если аутентификация завершена
+      const userData = { 
+        username, 
+        token: data.accessToken,
+        refreshToken: data.refreshToken
+      };
+      
+      setUser(userData);
+      localStorage.setItem('user', JSON.stringify(userData));
+      return { success: true };
+    } catch (err) {
+      throw err;
     }
   };
 
@@ -51,38 +53,73 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await fetch('http://localhost:8080/api/auth/verify-2fa', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ user_id: userId, token }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, token })
       });
-
-      const data = await response.json();
       
-      if (response.ok) {
-        localStorage.setItem('authToken', data.access_token);
-        localStorage.setItem('user', JSON.stringify({ id: userId }));
-        setAuthToken(data.access_token);
-        setUser({ id: userId });
-        return true;
-      } else {
-        throw new Error(data.error || '2FA verification failed');
-      }
-    } catch (error) {
-      throw error;
+      if (!response.ok) throw new Error(await response.text());
+      
+      const data = await response.json();
+      const userData = { 
+        username: data.username, 
+        token: data.accessToken,
+        refreshToken: data.refreshToken
+      };
+      
+      setUser(userData);
+      localStorage.setItem('user', JSON.stringify(userData));
+      return true;
+    } catch (err) {
+      throw err;
     }
   };
 
   const logout = () => {
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('user');
-    setAuthToken(null);
     setUser(null);
+    localStorage.removeItem('user');
     navigate('/login');
   };
 
+  const refreshToken = async () => {
+    if (!user?.refreshToken) {
+      logout();
+      return;
+    }
+    
+    try {
+      const response = await fetch('http://localhost:8080/api/auth/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: user.refreshToken })
+      });
+      
+      if (!response.ok) throw new Error(await response.text());
+      
+      const data = await response.json();
+      const userData = { 
+        ...user, 
+        token: data.accessToken,
+        refreshToken: data.refreshToken
+      };
+      
+      setUser(userData);
+      localStorage.setItem('user', JSON.stringify(userData));
+      return data.accessToken;
+    } catch (err) {
+      logout();
+      throw err;
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ authToken, user, login, verify2FA, logout }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      loading, 
+      login, 
+      logout, 
+      verify2FA,
+      refreshToken
+    }}>
       {children}
     </AuthContext.Provider>
   );
