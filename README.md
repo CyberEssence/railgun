@@ -1,45 +1,64 @@
-# Сodename: Railgun
+# Сodename: Railgun: AI-Powered Offensive SIEM Platform
 
 ![RAILGUN](https://github.com/CyberEssence/railgun/blob/main/R_A_I_L_G_U_N.png)
 
-SIEM которая идентифицирует атаки с помощью AI, а также может атаковать APT в ответ на их атаки
+## Overview
+Railgun is a next-generation **AI-driven SIEM system** with **counter-APT offensive capabilities**. Unlike traditional passive monitoring solutions, our platform combines:
+- Real-time threat detection using machine learning
+- Active response modules for counter-APT operations
+- Advanced forensic investigation tools
 
-У этой SIEM будет три слоя:
+> **Warning**: Offensive modules are designed for authorized active defense only. Use responsibly in compliance with all applicable laws.
 
-1) backend:
-	язык golang, библиотеки bun, gin
-	в этом слое происходят все серверные манипуляции с данными через grpc
-2) frontend:
-	 язык js, фреймворк vue.js
-	 в этом слое содержится код дизайна страниц, графики и дашборды
-3) data:
-	язык golang, либа - "golang.org/x/sys/windows", в этом слое происходят низкоуровневые манипуляции с ОС
+## Architecture
 
-hotfix v1: переписан код агента с С на golang, так код на С слишком объемный и тянет за собой много зависимостей,
-в дальнейшнем код агента будет разрабатываться на golang
+| Layer       | Technology Stack                  | Description                                                                  |
+|-------------|-----------------------------------|------------------------------------------------------------------------------|
+| **Backend** | Go (bun, gin)                     | Handles all server-side operations via gRPC with JWT authentication          |
+| **Frontend**| Vue.js + TypeScript               | Interactive dashboards with real-time attack visualization and control panel |
+| **Data**    | Go (golang.org/x/sys/windows)     | Low-level OS interactions and security event collection                      |
 
-to-do (stage 1):
-1. доделать все серверные эндпоинты
-2. сделать фронтенд для siem с графиками и дашбордами
-3. объединить все три слоя при помощи docker
-4. допилить поддержку graphql
 
-to-do (stage 2):
-1. настроить logstash, kibana
-2. начать пилить модуль зеркальных к APT атак
+## Current Status
 
-    2.1. Overload модуль
-  
-    2.2. Extract модуль
-  
-    2.3. Poison модуль
-  
-    2.4. Analysis модуль
-  
-    2.5. Attack модуль
-  
-    2.6. Destroy модуль
-  
-3. сделать модуль форензики
-4. сделать AI модуль
-5. сделать реверс модуль (чтобы можно было реверсить прямо в браузере)
+```diff
++ Hotfix v1: Agent successfully migrated from C to Go
+```
+
+## Roadmap
+
+### Stage 1 (Core Platform)
+
+    - Complete gRPC endpoints (ETA: Q3 2024)
+
+    - Implement Vue.js dashboard with:
+
+        - Real-time attack maps
+
+        - Threat heatmaps
+
+        - Countermeasure controls
+
+    - Dockerize all components
+
+    - Enhance GraphQL API support
+
+### Stage 2 (Offensive Modules)
+
+```mermaid
+graph TD;
+    A[APT Mirroring] --> B[Overload];
+    A --> C[Extract];
+    A --> D[Poison];
+    A --> E[Analysis];
+    A --> F[Attack];
+    A --> G[Destroy];
+```
+
+Additional modules:
+
+    - Forensic investigation toolkit
+
+    - AI-assisted threat analysis
+
+    - Browser-based reverse engineering
