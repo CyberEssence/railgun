@@ -29,7 +29,7 @@ Railgun is a next-generation **AI-driven SIEM system** with **counter-APT offens
 
 ### Stage 1 (Core Platform)
 
-    - Complete gRPC endpoints (ETA: Q3 2024)
+    - Complete gRPC endpoints
 
     - Implement Vue.js dashboard with:
 
