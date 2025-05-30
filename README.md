@@ -1,4 +1,4 @@
-# Сodename: Railgun: AI-Powered Offensive SIEM Platform
+# Railgun: AI-Powered Offensive SIEM Platform
 
 ![RAILGUN](https://github.com/CyberEssence/railgun/blob/main/R_A_I_L_G_U_N.png)
 
