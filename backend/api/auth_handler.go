@@ -11,18 +11,22 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"golang.org/x/crypto/bcrypt"
 
+	"railgun-core/internal/config"
 	"railgun-core/internal/domain"
+	"railgun-core/internal/domain/models"
 	"railgun-core/internal/infrastructure/persistence"
-	"railgun-core/internal/models"
+
+	"railgun-core/api/requests"
+	"railgun-core/api/responses"
 )
 
 type AuthHandler struct {
-	config       *domain.Config
+	config       *config.Config
 	twoFAService domain.TwoFAService
 	userRepo     *persistence.UserRepository
 }
 
-func NewAuthHandler(config *domain.Config, twoFAService domain.TwoFAService, userRepo *persistence.UserRepository) *AuthHandler {
+func NewAuthHandler(config *config.Config, twoFAService domain.TwoFAService, userRepo *persistence.UserRepository) *AuthHandler {
 	return &AuthHandler{
 		config:       config,
 		twoFAService: twoFAService,
@@ -30,47 +34,6 @@ func NewAuthHandler(config *domain.Config, twoFAService domain.TwoFAService, use
 	}
 }
 
-// LoginRequest структура для запроса на вход
-type LoginRequest struct {
-	Username   string `json:"username" binding:"required"`
-	Password   string `json:"password" binding:"required"`
-	TwoFAToken string `json:"two_fa_token,omitempty"`
-}
-
-// LoginResponse структура для ответа на вход
-type LoginResponse struct {
-	RequiresTwoFA bool   `json:"requires_2fa"`
-	UserID        int64  `json:"user_id,omitempty"`
-	Message       string `json:"message"`
-}
-
-// Verify2FARequest структура для запроса на проверку 2FA
-type Verify2FARequest struct {
-	UserID int64  `json:"user_id" binding:"required"`
-	Token  string `json:"token" binding:"required"`
-}
-
-// TokenResponse структура для ответа с токеном
-type TokenResponse struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
-	ExpiresIn    int    `json:"expires_in"`
-	TokenType    string `json:"token_type"`
-}
-
-// RegisterRequest структура для запроса на регистрацию
-type RegisterRequest struct {
-	Username string `json:"username" binding:"required"`
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required,min=8"`
-}
-
-// RefreshRequest структура для запроса на обновление токена
-type RefreshRequest struct {
-	RefreshToken string `json:"refresh_token" binding:"required"`
-}
-
-// api/auth_handler.go
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req models.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -175,7 +138,7 @@ func (h *AuthHandler) Verify2FA(c *gin.Context) {
 // Register обрабатывает запрос на регистрацию
 // Register обрабатывает запрос на регистрацию
 func (h *AuthHandler) Register(c *gin.Context) {
-	var req RegisterRequest
+	var req requests.RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -223,7 +186,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 
 // RefreshToken обновляет JWT токен
 func (h *AuthHandler) RefreshToken(c *gin.Context) {
-	var req RefreshRequest
+	var req requests.RefreshRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -259,7 +222,7 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, TokenResponse{
+	c.JSON(http.StatusOK, responses.TokenResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		ExpiresIn:    expiresIn,

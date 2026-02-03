@@ -3,13 +3,14 @@ package api
 import (
 	"github.com/gin-gonic/gin"
 
+	"railgun-core/internal/config"
 	"railgun-core/internal/domain"
 	"railgun-core/internal/infrastructure/persistence"
 )
 
 func RegisterRoutes(
 	r *gin.Engine,
-	cfg *domain.Config,
+	cfg *config.Config,
 	trafficRepo domain.TrafficRepository,
 	artifactRepo domain.ArtifactRepository,
 	aiService domain.AIService,

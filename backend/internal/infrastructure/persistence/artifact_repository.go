@@ -13,7 +13,7 @@ import (
 	"github.com/elastic/go-elasticsearch/v8"
 	"github.com/uptrace/bun"
 
-	"railgun-core/internal/models"
+	"railgun-core/internal/domain/models"
 )
 
 type ArtifactRepository struct {

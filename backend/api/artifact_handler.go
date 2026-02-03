@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"railgun-core/internal/domain"
-	"railgun-core/internal/models"
+	"railgun-core/internal/domain/models"
 )
 
 type ArtifactHandler struct {

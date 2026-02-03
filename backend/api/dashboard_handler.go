@@ -8,18 +8,19 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"railgun-core/internal/domain"
-	"railgun-core/internal/models"
+	"railgun-core/internal/domain/models"
 )
 
 type DashboardHandler struct {
-	trafficRepo domain.TrafficRepository
-	aiService   domain.AIService
+	trafficRepo   domain.TrafficRepository
+	analyticsRepo domain.AnalyticsRepository
+	aiRepo        domain.AIService
 }
 
-func NewDashboardHandler(trafficRepo domain.TrafficRepository, aiService domain.AIService) *DashboardHandler {
+func NewDashboardHandler(trafficRepo domain.TrafficRepository, aiRepo domain.AIService) *DashboardHandler {
 	return &DashboardHandler{
 		trafficRepo: trafficRepo,
-		aiService:   aiService,
+		aiRepo:      aiRepo,
 	}
 }
 
@@ -41,7 +42,7 @@ func (h *DashboardHandler) GetDashboardStats(c *gin.Context) {
 		return
 	}
 
-	threatStats, err := h.aiService.GetThreatStats(c, from, to)
+	threatStats, err := h.aiRepo.GetThreatStats(c, from, to)
 	if err != nil {
 		// Если таблицы нет, возвращаем нулевую статистику вместо ошибки
 		if strings.Contains(err.Error(), "отношение \"threats\" не существует") {
@@ -56,14 +57,14 @@ func (h *DashboardHandler) GetDashboardStats(c *gin.Context) {
 	}
 
 	// Получаем статистику трафика
-	trafficStats, err := h.trafficRepo.GetDashboardStats(c, from, to)
+	trafficStats, err := h.analyticsRepo.GetDashboardStats(c, from, to)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get traffic stats: " + err.Error()})
 		return
 	}
 
 	// Получаем статистику угроз
-	threatStats, err = h.aiService.GetThreatStats(c, from, to)
+	threatStats, err = h.aiRepo.GetThreatStats(c, from, to)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get threat stats: " + err.Error()})
 		return

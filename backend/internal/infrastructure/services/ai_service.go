@@ -12,8 +12,8 @@ import (
 
 	"github.com/uptrace/bun"
 
+	"railgun-core/internal/domain/models"
 	"railgun-core/internal/infrastructure/lowlevel"
-	"railgun-core/internal/models"
 )
 
 type AIService struct {

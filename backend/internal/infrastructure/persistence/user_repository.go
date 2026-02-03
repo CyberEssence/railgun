@@ -11,7 +11,7 @@ import (
 	"github.com/uptrace/bun"
 	"golang.org/x/crypto/bcrypt"
 
-	"railgun-core/internal/models"
+	"railgun-core/internal/domain/models"
 )
 
 type UserRepository struct {

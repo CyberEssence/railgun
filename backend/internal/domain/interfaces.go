@@ -2,21 +2,32 @@ package domain
 
 import (
 	"context"
-	"mime/multipart"
+	"io"
+	"railgun-core/internal/domain/models"
 
-	"railgun-core/internal/models"
 	"time"
 )
 
-// TrafficRepository интерфейс для работы с сетевым трафиком
+// TrafficRepository - только хранение и получение
 type TrafficRepository interface {
 	GetTrafficByHost(ctx context.Context, hostID string, from, to time.Time) ([]models.NetworkTraffic, error)
-	GetTrafficStats(ctx context.Context, hostID string, from, to time.Time) (*models.TrafficStats, error)
 	SaveTraffic(ctx context.Context, traffic models.NetworkTraffic) error
-	ProcessNetworkLog(ctx context.Context, hostID, logData, logType string) ([]models.NetworkTraffic, error)
-	IsolateHost(ctx context.Context, hostID, reason string, duration int) error
+	GetTrafficStats(ctx context.Context, hostID string, from, to time.Time) (*models.TrafficStats, error)
+}
+
+// AnalyticsRepository - для графиков и дашбордов
+type AnalyticsRepository interface {
 	GetThreatHeatmap(ctx context.Context, from, to time.Time) ([]models.HeatmapPoint, error)
-	GetDashboardStats(ctx context.Context, from, to time.Time) (map[string]interface{}, error)
+	GetDashboardStats(ctx context.Context, from, to time.Time) (*models.DashboardStats, error)
+}
+
+// HostActionRepository - для управления состоянием агентов (Active Response)
+type HostActionRepository interface {
+	IsolateHost(ctx context.Context, hostID, reason string, duration int) error
+}
+
+type NetworkLogRepository interface {
+	ProcessNetworkLog(ctx context.Context, hostID, logData, logType string) ([]models.NetworkTraffic, error)
 }
 
 // ArtifactRepository интерфейс для работы с артефактами
@@ -48,9 +59,10 @@ type AIService interface {
 	GetThreatStats(ctx context.Context, from time.Time, to time.Time) (*models.ThreatStats, error)
 }
 
-// IntegrationService интерфейс для работы с внешними сервисами
+// IntegrationService - независим от протоколов (HTTP/gRPC)
 type IntegrationService interface {
-	ScanWithVirusTotal(ctx context.Context, fileHeader *multipart.FileHeader) (*models.ScanResult, error)
+	// Принимает поток байт, что позволяет сканировать файлы из любых источников
+	ScanWithVirusTotal(ctx context.Context, file io.Reader, size int64) (*models.ScanResult, error)
 }
 
 // TwoFAService интерфейс для работы с двухфакторной аутентификацией

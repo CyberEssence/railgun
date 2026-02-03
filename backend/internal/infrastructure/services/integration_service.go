@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"railgun-core/internal/domain"
-	"railgun-core/internal/models"
+	"railgun-core/internal/domain/models"
 )
 
 type IntegrationConfig struct {
@@ -33,34 +33,28 @@ func NewIntegrationService(config IntegrationConfig) domain.IntegrationService {
 	}
 }
 
-func (s *IntegrationService) ScanWithVirusTotal(ctx context.Context, fileHeader *multipart.FileHeader) (*models.ScanResult, error) {
-	// Проверка размера файла
-	if fileHeader.Size > int64(s.config.MaxFileSize) {
-		return nil, fmt.Errorf("file too large: %d bytes (max %d bytes)", fileHeader.Size, s.config.MaxFileSize)
+func (s *IntegrationService) ScanWithVirusTotal(ctx context.Context, fileReader io.Reader, fileSize int64) (*models.ScanResult, error) {
+	// 1. Проверка размера (уже по числу, а не по хедеру)
+	if fileSize > int64(s.config.MaxFileSize) {
+		return nil, fmt.Errorf("file too large: %d bytes (max %d bytes)", fileSize, s.config.MaxFileSize)
 	}
 
-	// Проверка наличия API ключа
 	if s.config.VirusTotalAPIKey == "" {
 		return nil, fmt.Errorf("VirusTotal API key not configured")
 	}
 
-	// Открываем файл
-	file, err := fileHeader.Open()
-	if err != nil {
-		return nil, fmt.Errorf("failed to open file: %w", err)
-	}
-	defer file.Close()
-
-	// Создаем multipart форму для загрузки файла
+	// 2. Создаем multipart форму
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
-	part, err := writer.CreateFormFile("file", fileHeader.Filename)
+
+	// VirusTotal требует имя файла, можно передать "upload.file" или добавить аргумент в функцию
+	part, err := writer.CreateFormFile("file", "upload.file")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create form file: %w", err)
 	}
 
-	// Копируем содержимое файла в форму
-	_, err = io.Copy(part, file)
+	// 3. Копируем данные из Reader в форму
+	_, err = io.Copy(part, fileReader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to copy file: %w", err)
 	}

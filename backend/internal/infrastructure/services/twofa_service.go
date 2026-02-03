@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"railgun-core/internal/domain"
-	"railgun-core/internal/models"
+	"railgun-core/internal/domain/models"
 )
 
 type TwoFAService struct {

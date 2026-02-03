@@ -29,13 +29,7 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	// Подключение к базе данных
-	dsn := cfg.Database.DSN
-	if dsn == "" {
-		dsn = "postgres://postgres:postgres@localhost:5432/siem?sslmode=disable"
-	}
-
-	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(dsn)))
+	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(cfg.Database.DSN)))
 
 	// Create bun.DB
 	db := bun.NewDB(sqldb, pgdialect.New())

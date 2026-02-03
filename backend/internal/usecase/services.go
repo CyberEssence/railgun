@@ -1,6 +1,7 @@
-package application
+package usecase
 
 import (
+	"railgun-core/internal/config"
 	"railgun-core/internal/domain"
 
 	"railgun-core/internal/infrastructure/persistence"
@@ -15,7 +16,7 @@ type Services struct {
 	TwoFAService       domain.TwoFAService
 }
 
-func SetupServices(db *bun.DB, config *domain.Config) *Services {
+func SetupServices(db *bun.DB, config *config.Config) *Services {
 	userRepo := persistence.NewUserRepository(db)
 
 	return &Services{

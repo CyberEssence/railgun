@@ -8,11 +8,14 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"railgun-core/internal/domain"
-	"railgun-core/internal/models"
+	"railgun-core/internal/domain/models"
 )
 
 type TrafficHandler struct {
-	trafficRepo domain.TrafficRepository
+	trafficRepo    domain.TrafficRepository
+	networkLogRepo domain.NetworkLogRepository
+	hostActionRepo domain.HostActionRepository
+	analyticsRepo  domain.AnalyticsRepository
 }
 
 func NewTrafficHandler(trafficRepo domain.TrafficRepository) *TrafficHandler {
@@ -126,7 +129,7 @@ func (h *TrafficHandler) ProcessNetworkLog(c *gin.Context) {
 	}
 
 	// Обрабатываем лог
-	traffic, err := h.trafficRepo.ProcessNetworkLog(c, logRequest.HostID, logRequest.LogData, logRequest.LogType)
+	traffic, err := h.networkLogRepo.ProcessNetworkLog(c, logRequest.HostID, logRequest.LogData, logRequest.LogType)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -153,7 +156,7 @@ func (h *TrafficHandler) IsolateHost(c *gin.Context) {
 	}
 
 	// Изолируем хост
-	err := h.trafficRepo.IsolateHost(c, request.HostID, request.Reason, request.Duration)
+	err := h.hostActionRepo.IsolateHost(c, request.HostID, request.Reason, request.Duration)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -185,7 +188,7 @@ func (h *TrafficHandler) GetThreatHeatmap(c *gin.Context) {
 	}
 
 	// Получаем данные для тепловой карты
-	heatmapData, err := h.trafficRepo.GetThreatHeatmap(c, from, to)
+	heatmapData, err := h.analyticsRepo.GetThreatHeatmap(c, from, to)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

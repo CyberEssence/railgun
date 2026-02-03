@@ -20,15 +20,22 @@ func NewIntegrationHandler(integrationService domain.IntegrationService) *Integr
 
 // ScanFile сканирует файл с помощью внешних сервисов
 func (h *IntegrationHandler) ScanFile(c *gin.Context) {
-	// Получаем файл из запроса
-	file, err := c.FormFile("file")
+	fileHeader, err := c.FormFile("file")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "No file provided"})
 		return
 	}
 
-	// Сканируем файл с помощью VirusTotal
-	result, err := h.integrationService.ScanWithVirusTotal(c, file)
+	// Открываем файл, чтобы получить io.Reader
+	fileStream, err := fileHeader.Open()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to open file"})
+		return
+	}
+	defer fileStream.Close()
+
+	// Передаем в сервис: контекст, поток (Reader) и размер (int64)
+	result, err := h.integrationService.ScanWithVirusTotal(c.Request.Context(), fileStream, fileHeader.Size)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
