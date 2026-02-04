@@ -12,8 +12,10 @@ import (
 
 	"github.com/uptrace/bun"
 
+	"railgun-core/internal/config"
+	"railgun-core/internal/domain"
 	"railgun-core/internal/domain/models"
-	"railgun-core/internal/infrastructure/lowlevel"
+	engine "railgun-core/internal/engine/detection"
 )
 
 type AIService struct {
@@ -100,7 +102,9 @@ func (s *AIService) GetAttackPatterns(ctx context.Context, category, severity st
 	return patterns, total, nil
 }
 
-func (s *AIService) ExecuteCounterAttack(ctx context.Context, req models.CounterAttackRequest) error {
+func (s *AIService) ExecuteCounterAttack(ctx context.Context, req models.CounterAttackRequest, config *config.Config) error {
+	var repo domain.IncidentRepository
+
 	// Валидация запроса
 	if req.TargetIP == "" {
 		return errors.New("target IP is required")
@@ -114,7 +118,7 @@ func (s *AIService) ExecuteCounterAttack(ctx context.Context, req models.Counter
 	log.Printf("Executing counter attack: %+v", req)
 
 	// Выполнение контратаки через низкоуровневый модуль
-	return lowlevel.InitiateAttack(req.TargetIP, req.AttackType, req.Intensity)
+	return engine.NewDetector(config.Detection, repo).RespondToThreat(req.TargetIP, req.Intensity)
 }
 
 func (s *AIService) GetAPTTimeline(ctx context.Context, aptID string, startTime time.Time, endTime time.Time) (*models.APTTimeline, error) {

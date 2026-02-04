@@ -129,6 +129,17 @@ type ThreatReport struct {
 	Indicators           []string  `bun:"indicators,type:jsonb"`
 }
 
+type Incident struct {
+	bun.BaseModel `bun:"table:incidents,alias:i"`
+
+	ID          int64     `bun:"id,pk,autoincrement"`
+	Type        string    `bun:"type,notnull"`
+	SourceIP    string    `bun:"source_ip"`
+	ThreatLevel int       `bun:"threat_level"`
+	Description string    `bun:"description"`
+	CreatedAt   time.Time `bun:"created_at,nullzero,notnull,default:current_timestamp"`
+}
+
 func AddCategoryColumnToAttackPatterns(ctx context.Context, db *bun.DB) error {
 	// Проверяем наличие столбца category
 	var exists bool
@@ -172,6 +183,7 @@ func RunMigrations(ctx context.Context, db *bun.DB) error {
 		(*AttackPattern)(nil),
 		(*ThreatReport)(nil),
 		(*NetworkLog)(nil),
+		(*Incident)(nil),
 	}
 
 	for _, model := range models {

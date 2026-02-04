@@ -18,8 +18,10 @@ import (
 
 	"railgun-core/api"
 	"railgun-core/internal/config"
-	"railgun-core/internal/infrastructure/persistence"
-	"railgun-core/internal/infrastructure/services"
+	repository "railgun-core/internal/domain/repository"
+	engine "railgun-core/internal/engine/detection"
+	services "railgun-core/internal/infrastructure/collectors"
+	persistence "railgun-core/internal/infrastructure/persistence"
 )
 
 func main() {
@@ -53,9 +55,11 @@ func main() {
 	}
 
 	// Инициализация репозиториев
-	trafficRepo := persistence.NewTrafficRepository(db, cfg.Elastic.URL)
-	artifactRepo := persistence.NewArtifactRepository(db, cfg.Elastic.URL)
-	userRepo := persistence.NewUserRepository(db)
+	trafficRepo := repository.NewTrafficRepository(db, cfg.Elastic.URL)
+	artifactRepo := repository.NewArtifactRepository(db, cfg.Elastic.URL)
+	userRepo := repository.NewUserRepository(db)
+	incidentRepo := repository.NewIncidentRepository(db)
+	detEngine := engine.NewDetector(cfg.Detection, incidentRepo)
 
 	// Инициализация сервисов
 	aiService := services.NewAIService(db)
@@ -89,6 +93,10 @@ func main() {
 		integrationService,
 		twoFAService,
 		userRepo,
+		incidentRepo,
+		trafficRepo,
+		detEngine,
+		trafficRepo,
 	)
 
 	// Запуск сервера

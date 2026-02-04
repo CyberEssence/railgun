@@ -18,7 +18,7 @@ type TrafficRepository interface {
 // AnalyticsRepository - для графиков и дашбордов
 type AnalyticsRepository interface {
 	GetThreatHeatmap(ctx context.Context, from, to time.Time) ([]models.HeatmapPoint, error)
-	GetDashboardStats(ctx context.Context, from, to time.Time) (*models.DashboardStats, error)
+	GetDashboardStats(ctx context.Context, from, to time.Time) (map[string]interface{}, error)
 }
 
 // HostActionRepository - для управления состоянием агентов (Active Response)
@@ -69,4 +69,15 @@ type IntegrationService interface {
 type TwoFAService interface {
 	GenerateToken(ctx context.Context, userID int64) (string, error)
 	Validate2FAToken(ctx context.Context, token string, userID int64) (bool, error)
+}
+
+type DetectionEngine interface {
+	// Анализирует угрозу и выбирает стратегию защиты
+	AddEvent(ctx context.Context, event models.EventCorrelation)
+	RespondToThreat(targetIP string, threatLevel int) error
+}
+
+type IncidentRepository interface {
+	SaveIncident(ctx context.Context, incident *models.Incident) error
+	GetLatestIncidents(ctx context.Context, limit int) ([]models.Incident, error)
 }

@@ -365,3 +365,22 @@ type TokenResponse struct {
 	ExpiresIn    int    `json:"expires_in"`
 	TokenType    string `json:"token_type"`
 }
+
+type EventCorrelation struct {
+	Type      string    `json:"type"`      // например, "login_attempt" или "network_flow"
+	SourceIP  string    `json:"source_ip"` // IP атакующего или источника трафика
+	HostID    string    `json:"host_id"`   // Идентификатор хоста (ДОБАВЛЕНО)
+	Success   bool      `json:"success"`   // успешно или нет
+	Timestamp time.Time `json:"timestamp"`
+}
+
+type Incident struct {
+	bun.BaseModel `bun:"table:incidents,alias:i"`
+
+	ID          int64     `bun:"id,pk,autoincrement" json:"id"`
+	Type        string    `bun:"type,notnull" json:"type"` // brute_force, ai_anomaly
+	SourceIP    string    `bun:"source_ip" json:"source_ip"`
+	ThreatLevel int       `bun:"threat_level" json:"threat_level"`
+	Description string    `bun:"description" json:"description"`
+	CreatedAt   time.Time `bun:"created_at,default:current_timestamp" json:"created_at"`
+}

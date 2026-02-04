@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/lpernett/godotenv"
 )
@@ -46,6 +47,11 @@ func LoadConfig() (*Config, error) {
 	/*if cfg.Auth.Secret == "" {
 		log.Println("WARNING: JWT_SECRET is not set, using default for development only")
 	}*/
+
+	cfg.Detection = DetectionConfig{
+		BruteForceThreshold: getEnvAsInt("DETECTION_BF_THRESHOLD", 10),
+		BruteForceWindow:    time.Duration(getEnvAsInt("DETECTION_BF_WINDOW_SEC", 60)) * time.Second,
+	}
 
 	return cfg, nil
 }

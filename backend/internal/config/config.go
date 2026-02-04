@@ -7,4 +7,5 @@ type Config struct {
 	Integration IntegrationConfig
 	Security    SecurityConfig
 	Auth        AuthConfig
+	Detection   DetectionConfig
 }

@@ -3,9 +3,11 @@ package api
 import (
 	"github.com/gin-gonic/gin"
 
+	ingest "railgun-core/api/ingest"
+	web "railgun-core/api/web"
 	"railgun-core/internal/config"
 	"railgun-core/internal/domain"
-	"railgun-core/internal/infrastructure/persistence"
+	repository "railgun-core/internal/domain/repository"
 )
 
 func RegisterRoutes(
@@ -16,15 +18,22 @@ func RegisterRoutes(
 	aiService domain.AIService,
 	integrationService domain.IntegrationService,
 	twoFAService domain.TwoFAService,
-	userRepo *persistence.UserRepository,
+	userRepo *repository.UserRepository,
+	incidentRepo domain.IncidentRepository,
+	networkLogRepo domain.NetworkLogRepository,
+	detectionRepo domain.DetectionEngine,
+	analyticsRepo domain.AnalyticsRepository,
 ) {
 	// Инициализация обработчиков
-	authHandler := NewAuthHandler(cfg, twoFAService, userRepo)
-	aiHandler := NewAIHandler(aiService)
-	artifactHandler := NewArtifactHandler(artifactRepo)
+	authHandler := web.NewAuthHandler(cfg, twoFAService, userRepo)
+	aiHandler := web.NewAIHandler(aiService)
+	artifactHandler := web.NewArtifactHandler(artifactRepo)
 	integrationHandler := NewIntegrationHandler(integrationService)
-	dashboardHandler := NewDashboardHandler(trafficRepo, aiService)
-	trafficHandler := NewTrafficHandler(trafficRepo)
+	dashboardHandler := web.NewDashboardHandler(trafficRepo, aiService)
+	//trafficHandler := NewTrafficHandler(trafficRepo)
+	incidentHandler := web.NewIncidentHandler(incidentRepo)
+	ingestHandler := ingest.NewIngestHandler(trafficRepo, networkLogRepo, detectionRepo)
+	queryHandler := web.NewQueryHandler(trafficRepo, analyticsRepo)
 
 	// Группа аутентификации
 	authGroup := r.Group("/api/auth")
@@ -40,12 +49,12 @@ func RegisterRoutes(
 	apiGroup.Use(authHandler.AuthMiddleware())
 	{
 		// Трафик
-		apiGroup.GET("/traffic/:hostId", trafficHandler.GetTrafficByHost)
+		/*apiGroup.GET("/traffic/:hostId", trafficHandler.GetTrafficByHost)
 		apiGroup.GET("/traffic/stats/:hostId", trafficHandler.GetTrafficStats)
 		apiGroup.POST("/traffic", trafficHandler.SaveTraffic)
 		apiGroup.POST("/traffic/logs", trafficHandler.ProcessNetworkLog)
 		apiGroup.POST("/traffic/isolate", trafficHandler.IsolateHost)
-		apiGroup.GET("/traffic/heatmap", trafficHandler.GetThreatHeatmap)
+		apiGroup.GET("/traffic/heatmap", trafficHandler.GetThreatHeatmap)*/
 
 		// Артефакты
 		apiGroup.GET("/artifacts/:hostId", artifactHandler.GetArtifactsByHost)
@@ -67,6 +76,18 @@ func RegisterRoutes(
 
 		// Дашборд
 		apiGroup.GET("/dashboard/stats", dashboardHandler.GetDashboardStats)
+
+		// Инциденты
+		apiGroup.GET("/incidents", incidentHandler.GetIncidents)
+
+		ingest := r.Group("/ingest")
+		{
+			ingest.POST("/traffic", ingestHandler.SaveTraffic)
+			ingest.POST("/logs", ingestHandler.ProcessNetworkLog)
+		}
+
+		apiGroup.GET("/traffic/:hostId", queryHandler.GetTrafficByHost)
+		apiGroup.GET("/heatmap", queryHandler.GetThreatHeatmap)
 	}
 
 	// Публичные эндпоинты

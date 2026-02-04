@@ -14,19 +14,20 @@ import (
 	"railgun-core/internal/config"
 	"railgun-core/internal/domain"
 	"railgun-core/internal/domain/models"
-	"railgun-core/internal/infrastructure/persistence"
 
 	"railgun-core/api/requests"
 	"railgun-core/api/responses"
+
+	repository "railgun-core/internal/domain/repository"
 )
 
 type AuthHandler struct {
 	config       *config.Config
 	twoFAService domain.TwoFAService
-	userRepo     *persistence.UserRepository
+	userRepo     *repository.UserRepository
 }
 
-func NewAuthHandler(config *config.Config, twoFAService domain.TwoFAService, userRepo *persistence.UserRepository) *AuthHandler {
+func NewAuthHandler(config *config.Config, twoFAService domain.TwoFAService, userRepo *repository.UserRepository) *AuthHandler {
 	return &AuthHandler{
 		config:       config,
 		twoFAService: twoFAService,

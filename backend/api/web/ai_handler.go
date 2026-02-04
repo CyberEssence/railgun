@@ -8,7 +8,6 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"railgun-core/internal/domain"
-	"railgun-core/internal/infrastructure/lowlevel"
 )
 
 type AIHandler struct {
@@ -103,11 +102,11 @@ func (h *AIHandler) ExecuteCounterAttack(c *gin.Context) {
 	})
 
 	// Выполняем контратаку
-	err := lowlevel.InitiateAttack(request.TargetIP, request.AttackType, request.Intensity)
+	/*err := engine.NewDetector(config.Detection).RespondToThreat(request.TargetIP, request.Intensity)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
-	}
+	}*/
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":     "Counter-attack initiated successfully",
