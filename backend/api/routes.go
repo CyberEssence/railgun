@@ -28,7 +28,7 @@ func RegisterRoutes(
 	authHandler := web.NewAuthHandler(cfg, twoFAService, userRepo)
 	aiHandler := web.NewAIHandler(aiService)
 	artifactHandler := web.NewArtifactHandler(artifactRepo)
-	integrationHandler := NewIntegrationHandler(integrationService)
+	integrationHandler := web.NewIntegrationHandler(integrationService)
 	dashboardHandler := web.NewDashboardHandler(trafficRepo, aiService)
 	//trafficHandler := NewTrafficHandler(trafficRepo)
 	incidentHandler := web.NewIncidentHandler(incidentRepo)
