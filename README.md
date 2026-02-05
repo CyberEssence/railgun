@@ -15,7 +15,7 @@ Railgun is a next-generation **AI-driven SIEM system** with **counter-APT offens
 | Layer       | Technology Stack                  | Description                                                                  |
 |-------------|-----------------------------------|------------------------------------------------------------------------------|
 | **Backend** | Go (bun, gin)                     | Handles all server-side operations via gRPC with JWT authentication          |
-| **Frontend**| Vue.js + TypeScript               | Interactive dashboards with real-time attack visualization and control panel |
+| **Frontend**| React                             | Interactive dashboards with real-time attack visualization and control panel |
 | **Data**    | Go (golang.org/x/sys/windows)     | Low-level OS interactions and security event collection                      |
 
 
