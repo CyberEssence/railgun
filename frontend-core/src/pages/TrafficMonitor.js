@@ -78,7 +78,6 @@ export const TrafficMonitor = () => {
           fromDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
       }
       
-      // ИСПРАВЛЕНО: используем useApi для авторизованного запроса
       const params = new URLSearchParams({
         from: fromDate.toISOString(),
         to: now.toISOString()

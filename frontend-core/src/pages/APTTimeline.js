@@ -1,4 +1,3 @@
-// APTTimeline.js
 import React, { useState, useEffect } from 'react';
 import { 
   Box, Paper, Typography, TextField, CircularProgress, 
@@ -54,8 +53,8 @@ export const APTTimeline = () => {
     try {
       const params = new URLSearchParams({
         host_id: hostId.trim(),
-        from: fromDate.toISOString(), // или format(fromDate, "yyyy-MM-dd'T'HH:mm:ss'Z'")
-        to: toDate.toISOString(),     // или format(toDate, "yyyy-MM-dd'T'HH:mm:ss'Z'")
+        from: fromDate.toISOString(), 
+        to: toDate.toISOString(),     
         group_by: groupBy,
       });
 

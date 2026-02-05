@@ -1,4 +1,3 @@
-// hooks/useApi.js
 import { useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 

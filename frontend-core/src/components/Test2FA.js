@@ -1,4 +1,3 @@
-// components/Test2FA.js
 import React, { useState } from 'react';
 import { 
   Box, 
