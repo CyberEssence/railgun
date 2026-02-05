@@ -32,8 +32,7 @@ export const AIModels = () => {
   const [selectedModel, setSelectedModel] = useState(null);
   const [trainEpochs, setTrainEpochs] = useState(10);
   const [datasetPath, setDatasetPath] = useState('');
-  
-  // Новые состояния для создания модели
+
   const [newModelName, setNewModelName] = useState('');
   const [newModelType, setNewModelType] = useState('');
 
@@ -59,7 +58,7 @@ export const AIModels = () => {
   };
 
   const fetchModels = async () => {
-    debugState(); // Логируем состояние перед запросом
+    debugState(); 
     
     if (!isAuthenticated()) {
       setError('Not authenticated. Please login first.');
