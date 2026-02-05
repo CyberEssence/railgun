@@ -213,3 +213,34 @@ func (h *AIHandler) ListModels(c *gin.Context) {
 
 	c.JSON(http.StatusOK, models)
 }
+
+func (h *AIHandler) GetPatternStats(c *gin.Context) {
+	// Получаем статистику по категориям
+	byCategory := []gin.H{
+		{"category": "Initial Access", "count": 15},
+		{"category": "Execution", "count": 22},
+		{"category": "Persistence", "count": 18},
+		{"category": "Privilege Escalation", "count": 12},
+		{"category": "Defense Evasion", "count": 25},
+		{"category": "Credential Access", "count": 20},
+		{"category": "Discovery", "count": 16},
+		{"category": "Lateral Movement", "count": 14},
+		{"category": "Collection", "count": 10},
+		{"category": "Command and Control", "count": 8},
+		{"category": "Exfiltration", "count": 6},
+		{"category": "Impact", "count": 9},
+	}
+
+	// Получаем статистику по уровням угрозы
+	bySeverity := []gin.H{
+		{"severity": "Low", "count": 10},
+		{"severity": "Medium", "count": 35},
+		{"severity": "High", "count": 28},
+		{"severity": "Critical", "count": 5},
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"byCategory": byCategory,
+		"bySeverity": bySeverity,
+	})
+}

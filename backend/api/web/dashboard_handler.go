@@ -9,15 +9,16 @@ import (
 
 	"railgun-core/internal/domain"
 	"railgun-core/internal/domain/models"
+	repository "railgun-core/internal/domain/repository"
 )
 
 type DashboardHandler struct {
-	trafficRepo   domain.TrafficRepository
+	trafficRepo   repository.TrafficRepository
 	analyticsRepo domain.AnalyticsRepository
 	aiRepo        domain.AIService
 }
 
-func NewDashboardHandler(trafficRepo domain.TrafficRepository, aiRepo domain.AIService) *DashboardHandler {
+func NewDashboardHandler(trafficRepo repository.TrafficRepository, aiRepo domain.AIService) *DashboardHandler {
 	return &DashboardHandler{
 		trafficRepo: trafficRepo,
 		aiRepo:      aiRepo,

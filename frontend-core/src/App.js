@@ -9,7 +9,9 @@ import { APTTimeline } from './pages/APTTimeline';
 import { AIModels } from './pages/AIModels';
 import { CounterAttack } from './pages/CounterAttack';
 import { Navbar } from './components/Navbar';
+import { Test2FA } from './components/Test2FA';
 import { AuthProvider } from './context/AuthContext';
+import { Register } from './pages/Register';
 import { Login } from './pages/Login';
 import { PrivateRoute } from './components/PrivateRoute';
 import { FileScanner } from './pages/FileScanner';
@@ -47,6 +49,8 @@ function App() {
           <Box sx={{ p: 3 }}>
             <Routes>
               <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Register />} />
+              <Route path="/test-2fa" element={<Test2FA />} />
               <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
               <Route path="/traffic" element={<PrivateRoute><TrafficMonitor /></PrivateRoute>} />
               <Route path="/artifacts" element={<PrivateRoute><ArtifactExplorer /></PrivateRoute>} />

@@ -6,15 +6,17 @@ import (
 
 	"railgun-core/internal/domain"
 
+	repository "railgun-core/internal/domain/repository"
+
 	"github.com/gin-gonic/gin"
 )
 
 type QueryHandler struct {
-	trafficRepo   domain.TrafficRepository
+	trafficRepo   repository.TrafficRepository
 	analyticsRepo domain.AnalyticsRepository
 }
 
-func NewQueryHandler(tr domain.TrafficRepository, ar domain.AnalyticsRepository) *QueryHandler {
+func NewQueryHandler(tr repository.TrafficRepository, ar domain.AnalyticsRepository) *QueryHandler {
 	return &QueryHandler{
 		trafficRepo:   tr,
 		analyticsRepo: ar,
