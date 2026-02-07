@@ -17,7 +17,16 @@ func NewIncidentHandler(repo domain.IncidentRepository) *IncidentHandler {
 	return &IncidentHandler{repo: repo}
 }
 
-// GetIncidents возвращает список последних инцидентов
+// GetIncidents godoc
+// @Summary      Список последних инцидентов
+// @Description  Возвращает список последних зарегистрированных инцидентов ИБ
+// @Tags         Incidents
+// @Produce      json
+// @Param        limit  query     int  false  "Количество записей" default(10)
+// @Success      200    {array}   dto.IncidentDTO
+// @Failure      500    {object}  map[string]string
+// @Security     BearerAuth
+// @Router       /incidents [get]
 func (h *IncidentHandler) GetIncidents(c *gin.Context) {
 	limitStr := c.DefaultQuery("limit", "10")
 	limit, _ := strconv.Atoi(limitStr)

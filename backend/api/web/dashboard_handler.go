@@ -25,7 +25,18 @@ func NewDashboardHandler(trafficRepo repository.TrafficRepository, aiRepo domain
 	}
 }
 
-// GetDashboardStats возвращает статистику для дашборда
+// GetDashboardStats godoc
+// @Summary      Получить статистику дашборда
+// @Description  Возвращает агрегированные данные по трафику и угрозам за указанный период времени
+// @Tags         Dashboard
+// @Produce      json
+// @Param        from  query     string  false  "Начало периода (RFC3339, например: 2023-01-01T00:00:00Z)"
+// @Param        to    query     string  false  "Конец периода (RFC3339)"
+// @Success      200   {object}  map[string]interface{} "Статистика трафика, угроз и подтвержденный временной диапазон"
+// @Failure      400   {object}  map[string]string      "Неверный формат даты"
+// @Failure      500   {object}  map[string]string      "Ошибка при получении данных из репозиториев"
+// @Security     BearerAuth
+// @Router       /dashboard/stats [get]
 func (h *DashboardHandler) GetDashboardStats(c *gin.Context) {
 	// Получаем параметры запроса
 	fromStr := c.DefaultQuery("from", time.Now().Add(-24*time.Hour).Format(time.RFC3339))
