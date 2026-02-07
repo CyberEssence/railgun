@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 const AuthContext = createContext();
@@ -155,10 +155,14 @@ export const AuthProvider = ({ children }) => {
     return user?.token;
   };
 
-  const isAuthenticated = () => {
+  /*const isAuthenticated = () => {
     const token = getToken();
     return !!token;
-  };
+  };*/
+
+  const isAuthenticated = useCallback(() => {
+    return !!user?.token;
+  }, [user]);
 
   const token = getToken();
 
@@ -188,7 +192,7 @@ export const AuthProvider = ({ children }) => {
         verify2FA,
         register,
         getToken,
-        isAuthenticated: isAuthenticated(),
+        isAuthenticated,
         token,
         testAuthAPI,
       }}

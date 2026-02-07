@@ -31,7 +31,7 @@ import TimerIcon from '@mui/icons-material/Timer';
 import RefreshIcon from '@mui/icons-material/Refresh';
 
 export const TrafficMonitor = () => {
-  // Хуки должны быть ВНУТРИ компонента
+
   const api = useApi();
   const { isAuthenticated, logout } = useAuth();
   
@@ -48,7 +48,7 @@ export const TrafficMonitor = () => {
       return;
     }
     
-    if (!isAuthenticated()) {
+    if (!isAuthenticated()) { 
       setError('Please login to access traffic data');
       return;
     }
