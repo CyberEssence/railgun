@@ -81,32 +81,6 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	/*// Если включена 2FA
-	if h.twoFAService != nil {
-		token, err := h.twoFAService.GenerateToken(c.Request.Context(), user.ID)
-		if err != nil {
-			// Логируем ошибку для отладки
-			log.Printf("2FA token generation failed: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate 2FA token"})
-			return
-		}
-
-		c.JSON(http.StatusOK, models.LoginResponse{
-			RequiresTwoFA: true,
-			UserID:        user.ID,
-			Message:       "2FA token required",
-			TwoFAToken:    token,
-		})
-		return
-	}
-
-	// Генерация JWT токенов если 2FA не используется
-	accessToken, refreshToken, expiresIn, err := h.generateTokens(user.ID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate tokens"})
-		return
-	}*/
-
 	c.JSON(http.StatusOK, models.TokenResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
@@ -213,9 +187,6 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user: " + err.Error()})
 		return
 	}
-
-	// Опционально: создание и отправка токена подтверждения email
-	// h.sendVerificationEmail(newUser.Email, verificationToken)
 
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "User registered successfully",

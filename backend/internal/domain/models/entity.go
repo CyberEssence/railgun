@@ -140,7 +140,6 @@ type User struct {
 	Email        string `bun:"email,unique,notnull"`
 	PasswordHash string `bun:"password_hash,notnull" json:"-"`
 
-	// Обязательно должно совпадать с БД!
 	TOTPSecret      string `bun:"totp_secret"`
 	TOTPEnabled     bool   `bun:"totp_enabled,default:false"`
 	TOTPBackupCodes string `bun:"totp_backup_codes"` // Просто string без type:jsonb

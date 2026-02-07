@@ -1,8 +1,6 @@
 package api
 
 import (
-	"net/http"
-
 	"github.com/gin-gonic/gin"
 
 	ingest "railgun-core/api/ingest"
@@ -40,15 +38,6 @@ func RegisterRoutes(
 	incidentHandler := web.NewIncidentHandler(incidentRepo)
 	ingestHandler := ingest.NewIngestHandler(trafficRepo, networkLogRepo, detectionRepo)
 	queryHandler := web.NewQueryHandler(trafficRepo, analyticsRepo)
-
-	// Тестовый маршрут для проверки middleware
-	r.GET("/api/test-auth", authHandler.AuthMiddleware(), func(c *gin.Context) {
-		userID, _ := c.Get("user_id")
-		c.JSON(http.StatusOK, gin.H{
-			"message": "Authenticated!",
-			"user_id": userID,
-		})
-	})
 
 	// Группа аутентификации
 	authGroup := r.Group("/api/auth")
