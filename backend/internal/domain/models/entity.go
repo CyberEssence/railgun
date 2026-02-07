@@ -1,6 +1,7 @@
 package models
 
 import (
+	"railgun-core/internal/domain/dto"
 	"time"
 
 	"github.com/uptrace/bun"
@@ -109,8 +110,25 @@ type WindowsArtifact struct {
 	Owner       string                 `bun:"owner" json:"owner"`
 	Permissions string                 `bun:"permissions" json:"permissions"`
 	Metadata    map[string]interface{} `bun:"metadata,type:jsonb" json:"metadata"`
-	// Добавьте threat_level, если он нужен
-	ThreatLevel int `bun:"threat_level" json:"threat_level"`
+	ThreatLevel int                    `bun:"threat_level" json:"threat_level"`
+}
+
+// ToWindowsArtifactDTO() преобразует модель в DTO для API
+func (w *WindowsArtifact) ToWindowsArtifactDTO() dto.WindowsArtifactDTO {
+	return dto.WindowsArtifactDTO{
+		ID:          w.ID,
+		HostID:      w.HostID,
+		Timestamp:   w.Timestamp,
+		Type:        w.Type,
+		Path:        w.Path,
+		Value:       w.Value,
+		Size:        w.Size,
+		Hash:        w.Hash,
+		Owner:       w.Owner,
+		Permissions: w.Permissions,
+		Metadata:    w.Metadata,
+		ThreatLevel: w.ThreatLevel,
+	}
 }
 
 // User представляет пользователя системы
@@ -383,4 +401,16 @@ type Incident struct {
 	ThreatLevel int       `bun:"threat_level" json:"threat_level"`
 	Description string    `bun:"description" json:"description"`
 	CreatedAt   time.Time `bun:"created_at,default:current_timestamp" json:"created_at"`
+}
+
+// ToIncidentDTO() преобразует модель в DTO для API
+func (w *Incident) ToIncidentDTO() dto.IncidentDTO {
+	return dto.IncidentDTO{
+		ID:          w.ID,
+		Type:        w.Type,
+		SourceIP:    w.SourceIP,
+		ThreatLevel: w.ThreatLevel,
+		Description: w.Description,
+		CreatedAt:   w.CreatedAt,
+	}
 }

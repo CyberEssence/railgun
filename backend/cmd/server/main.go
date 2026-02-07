@@ -24,6 +24,16 @@ import (
 	persistence "railgun-core/internal/infrastructure/persistence"
 )
 
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Введите токен в формате: Bearer <your_token>
+
+// @title           Railgun API
+// @version         1.0
+// @description     Railgun AI-driven SIEM API
+// @host            localhost:8080
+// @BasePath        /api
 func main() {
 	// Загрузка конфигурации
 	cfg, err := config.LoadConfig()

@@ -18,7 +18,18 @@ func NewIntegrationHandler(integrationService domain.IntegrationService) *Integr
 	}
 }
 
-// ScanFile сканирует файл с помощью внешних сервисов
+// ScanFile godoc
+// @Summary      Сканировать файл через VirusTotal
+// @Description  Загружает файл и отправляет его на проверку во внешние антивирусные сервисы
+// @Tags         Integrations
+// @Accept       multipart/form-data
+// @Produce      json
+// @Param        file  formData  file  true  "Бинарный файл для сканирования"
+// @Success      200   {object}  models.ScanResult
+// @Failure      400   {object}  map[string]string "Файл не предоставлен"
+// @Failure      500   {object}  map[string]string "Ошибка сканирования"
+// @Security     BearerAuth
+// @Router       /integrations/scan [post]
 func (h *IntegrationHandler) ScanFile(c *gin.Context) {
 	fileHeader, err := c.FormFile("file")
 	if err != nil {

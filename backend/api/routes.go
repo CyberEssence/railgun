@@ -5,9 +5,13 @@ import (
 
 	ingest "railgun-core/api/ingest"
 	web "railgun-core/api/web"
+	_ "railgun-core/docs"
 	"railgun-core/internal/config"
 	"railgun-core/internal/domain"
 	repository "railgun-core/internal/domain/repository"
+
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 func RegisterRoutes(
@@ -83,6 +87,9 @@ func RegisterRoutes(
 		apiGroup.GET("/traffic/:hostId", queryHandler.GetTrafficByHost)
 		apiGroup.GET("/traffic/heatmap", queryHandler.GetThreatHeatmap)
 	}
+
+	// Swagger UI
+	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	// Публичные эндпоинты
 	r.GET("/health", func(c *gin.Context) {

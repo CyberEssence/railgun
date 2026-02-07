@@ -35,6 +35,18 @@ func NewAuthHandler(config *config.Config, twoFAService domain.TwoFAService, use
 	}
 }
 
+// Login godoc
+// @Summary      Вход в систему
+// @Description  Аутентификация пользователя по имени и паролю. Может вернуть токены сразу или потребовать 2FA.
+// @Tags         Auth
+// @Accept       json
+// @Produce      json
+// @Param        request body models.LoginRequest true "Данные пользователя"
+// @Success      200  {object}  models.TokenResponse "Если 2FA отключена"
+// @Success      200  {object}  models.LoginResponse "Если требуется 2FA"
+// @Failure      401  {object}  map[string]string "Неверные учетные данные"
+// @Failure      500  {object}  map[string]string "Ошибка генерации токенов"
+// @Router       /auth/login [post]
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req models.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -88,17 +100,24 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	})
 }
 
-// Verify2FA проверяет 2FA токен и выдает JWT токен
+// Verify2FA godoc
+// @Summary      Проверка 2FA кода
+// @Description  Проверяет временный код подтверждения и выдает финальные JWT токены
+// @Tags         Auth
+// @Accept       json
+// @Produce      json
+// @Param        request body requests.Verify2FARequest true "ID пользователя и код из приложения"
+// @Success      200  {object}  models.TokenResponse "JWT токены"
+// @Failure      400  {object}  map[string]interface{} "Неверный формат запроса"
+// @Failure      401  {object}  map[string]string "Неверный 2FA код"
+// @Router       /auth/verify-2fa [post]
 func (h *AuthHandler) Verify2FA(c *gin.Context) {
 	// Логируем входящий запрос
 	body, _ := c.GetRawData()
 	log.Printf("Incoming 2FA verification request: %s", string(body))
 	c.Request.Body = io.NopCloser(bytes.NewBuffer(body)) // Возвращаем body для повторного чтения
 
-	var req struct {
-		UserID int64  `json:"user_id" binding:"required"`
-		Token  string `json:"token" binding:"required"`
-	}
+	var req requests.Verify2FARequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		log.Printf("Invalid request format: %v", err)
@@ -136,7 +155,18 @@ func (h *AuthHandler) Verify2FA(c *gin.Context) {
 	})
 }
 
-// Register обрабатывает запрос на регистрацию
+// Register godoc
+// @Summary      Регистрация пользователя
+// @Description  Создает новый аккаунт. Пароль должен быть не менее 8 символов.
+// @Tags         Auth
+// @Accept       json
+// @Produce      json
+// @Param        request body requests.RegisterRequest true "Данные для регистрации"
+// @Success      201  {object}  map[string]interface{} "Пользователь успешно создан"
+// @Failure      400  {object}  map[string]string "Ошибка валидации или слабый пароль"
+// @Failure      409  {object}  map[string]string "Имя пользователя уже занято"
+// @Failure      500  {object}  map[string]string
+// @Router       /auth/register [post]
 func (h *AuthHandler) Register(c *gin.Context) {
 	var req requests.RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -184,7 +214,17 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	})
 }
 
-// RefreshToken обновляет JWT токен
+// RefreshToken godoc
+// @Summary      Обновить JWT токены
+// @Description  Принимает Refresh Token и выдает новую пару Access/Refresh токенов
+// @Tags         Auth
+// @Accept       json
+// @Produce      json
+// @Param        request body requests.RefreshRequest true "Refresh Token"
+// @Success      200  {object}  responses.TokenResponse
+// @Failure      400  {object}  map[string]string
+// @Failure      401  {object}  map[string]string "Невалидный Refresh Token"
+// @Router       /auth/refresh [post]
 func (h *AuthHandler) RefreshToken(c *gin.Context) {
 	var req requests.RefreshRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

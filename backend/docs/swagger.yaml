@@ -1,0 +1,1132 @@
+basePath: /api
+definitions:
+  api.NetworkLogRequest:
+    properties:
+      host_id:
+        type: string
+      log_data:
+        type: string
+      log_type:
+        type: string
+    required:
+    - host_id
+    - log_data
+    - log_type
+    type: object
+  dto.IncidentDTO:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: integer
+      source_ip:
+        type: string
+      threat_level:
+        type: integer
+      type:
+        description: brute_force, ai_anomaly
+        type: string
+    type: object
+  dto.WindowsArtifactDTO:
+    properties:
+      hash:
+        type: string
+      host_id:
+        type: string
+      id:
+        type: integer
+      metadata:
+        additionalProperties: true
+        type: object
+      owner:
+        type: string
+      path:
+        type: string
+      permissions:
+        type: string
+      size:
+        type: integer
+      threat_level:
+        type: integer
+      timestamp:
+        type: string
+      type:
+        type: string
+      value:
+        type: string
+    type: object
+  models.AnalysisResult:
+    properties:
+      confidence:
+        type: number
+      detected_threats:
+        items:
+          type: string
+        type: array
+      recommendations:
+        items:
+          type: string
+        type: array
+      threat_level:
+        type: integer
+      timestamp:
+        type: string
+    type: object
+  models.LoginRequest:
+    properties:
+      password:
+        type: string
+      username:
+        type: string
+    required:
+    - password
+    - username
+    type: object
+  models.LoginResponse:
+    properties:
+      message:
+        type: string
+      requires_2fa:
+        type: boolean
+      two_fa_token:
+        type: string
+      user_id:
+        type: integer
+    type: object
+  models.NetworkTraffic:
+    type: object
+  models.ScanResult:
+    properties:
+      data:
+        properties:
+          attributes:
+            properties:
+              results:
+                additionalProperties:
+                  properties:
+                    category:
+                      type: string
+                    result:
+                      type: string
+                  type: object
+                type: object
+              stats:
+                properties:
+                  malicious:
+                    type: integer
+                  suspicious:
+                    type: integer
+                  undetected:
+                    type: integer
+                type: object
+              status:
+                type: string
+            type: object
+          id:
+            type: string
+        type: object
+    type: object
+  models.TokenResponse:
+    properties:
+      access_token:
+        type: string
+      expires_in:
+        type: integer
+      refresh_token:
+        type: string
+      token_type:
+        type: string
+    type: object
+  models.TrafficStats:
+    properties:
+      average_duration:
+        type: number
+      total_bytes_recv:
+        type: integer
+      total_bytes_sent:
+        type: integer
+      total_packets_recv:
+        type: integer
+      total_packets_sent:
+        type: integer
+    type: object
+  models.WindowsArtifact:
+    type: object
+  requests.AnalyzeRealtimeRequest:
+    properties:
+      data:
+        items:
+          type: string
+        type: array
+      data_type:
+        type: string
+      host_id:
+        type: string
+    required:
+    - data
+    - data_type
+    - host_id
+    type: object
+  requests.CounterAttackRequest:
+    properties:
+      attack_type:
+        type: string
+      intensity:
+        maximum: 5
+        minimum: 1
+        type: integer
+      target_ip:
+        type: string
+    required:
+    - attack_type
+    - intensity
+    - target_ip
+    type: object
+  requests.IsolateHostRequest:
+    properties:
+      duration:
+        description: в минутах, 0 = бессрочно
+        type: integer
+      host_id:
+        type: string
+      reason:
+        type: string
+    required:
+    - host_id
+    - reason
+    type: object
+  requests.RefreshRequest:
+    properties:
+      refresh_token:
+        type: string
+    required:
+    - refresh_token
+    type: object
+  requests.RegisterRequest:
+    properties:
+      email:
+        type: string
+      password:
+        minLength: 8
+        type: string
+      username:
+        type: string
+    required:
+    - email
+    - password
+    - username
+    type: object
+  requests.TrainModelRequest:
+    properties:
+      dataset_path:
+        type: string
+      epochs:
+        minimum: 1
+        type: integer
+      model_id:
+        type: string
+    required:
+    - dataset_path
+    - epochs
+    - model_id
+    type: object
+  requests.UpdateModelsRequest:
+    properties:
+      model_ids:
+        items:
+          type: string
+        type: array
+    required:
+    - model_ids
+    type: object
+  requests.Verify2FARequest:
+    properties:
+      token:
+        type: string
+      user_id:
+        type: integer
+    required:
+    - token
+    - user_id
+    type: object
+  responses.TokenResponse:
+    properties:
+      access_token:
+        type: string
+      expires_in:
+        type: integer
+      refresh_token:
+        type: string
+      token_type:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: Railgun AI-driven SIEM API
+  title: Railgun API
+  version: "1.0"
+paths:
+  /ai/analyze:
+    post:
+      consumes:
+      - application/json
+      description: Принимает данные, тип данных и ID хоста для мгновенного анализа
+        нейросетью
+      parameters:
+      - description: Данные для анализа
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/requests.AnalyzeRealtimeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.AnalysisResult'
+        "400":
+          description: Ошибка валидации
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Внутренняя ошибка сервера
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Выполнить AI анализ в реальном времени
+      tags:
+      - AI Analysis
+  /ai/apt-timeline:
+    get:
+      description: Получает хронологию сложных устойчивых угроз (APT) для конкретного
+        хоста
+      parameters:
+      - description: ID хоста
+        in: query
+        name: host_id
+        required: true
+        type: string
+      - description: Начало периода (RFC3339)
+        in: query
+        name: from
+        type: string
+      - description: Конец периода (RFC3339)
+        in: query
+        name: to
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Массив событий таймлайна
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Временная шкала APT
+      tags:
+      - AI Analysis
+  /ai/counter-attack:
+    post:
+      consumes:
+      - application/json
+      description: Инициирует защитные действия против указанного IP адреса
+      parameters:
+      - description: Параметры контратаки
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/requests.CounterAttackRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Сообщение об успешном запуске
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Не авторизован
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Запустить контратаку
+      tags:
+      - Defense
+  /ai/models:
+    get:
+      description: Возвращает список доступных AI моделей, опционально фильтруя по
+        типу
+      parameters:
+      - description: Тип модели
+        in: query
+        name: type
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Список всех моделей
+      tags:
+      - Model Management
+  /ai/models/train:
+    post:
+      consumes:
+      - application/json
+      description: Создает задачу на обучение конкретной модели на основе указанного
+        датасета
+      parameters:
+      - description: Параметры обучения
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/requests.TrainModelRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: ID задачи на обучение
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Обучить модель
+      tags:
+      - Model Management
+  /ai/models/update:
+    post:
+      consumes:
+      - application/json
+      description: Запускает процесс обновления весов для выбранных ID моделей
+      parameters:
+      - description: Список ID моделей
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/requests.UpdateModelsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Обновить модели AI
+      tags:
+      - Model Management
+  /ai/patterns:
+    get:
+      description: Возвращает список шаблонов атак с фильтрацией и пагинацией
+      parameters:
+      - description: Категория (напр. Initial Access)
+        in: query
+        name: category
+        type: string
+      - description: Уровень угрозы (Low, Medium, High, Critical)
+        in: query
+        name: severity
+        type: string
+      - default: 1
+        description: Номер страницы
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: Кол-во элементов на странице
+        in: query
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Объект с data (массив шаблонов) и meta (пагинация)
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Получить шаблоны атак
+      tags:
+      - Attack Patterns
+  /ai/patterns/stats:
+    get:
+      description: Возвращает агрегированную статистику атак по категориям и уровням
+        критичности
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Статистика (byCategory, bySeverity)
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Статистика шаблонов
+      tags:
+      - Attack Patterns
+  /analytics/heatmap:
+    get:
+      description: Генерирует данные для построения карты интенсивности угроз
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Тепловая карта угроз
+      tags:
+      - Analytics
+  /analytics/traffic/{hostId}:
+    get:
+      description: Получает статистику сетевого трафика для узла за временной период
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Трафик по конкретному хосту
+      tags:
+      - Analytics
+  /artifacts:
+    post:
+      consumes:
+      - application/json
+      description: Создает новую запись артефакта Windows в системе
+      parameters:
+      - description: Данные артефакта
+        in: body
+        name: artifact
+        required: true
+        schema:
+          $ref: '#/definitions/models.WindowsArtifact'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Успешное сохранение и ID записи
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Сохранить артефакт
+      tags:
+      - Artifacts
+  /artifacts/host/{hostId}:
+    get:
+      description: Возвращает список артефактов для конкретного хоста с поддержкой
+        пагинации
+      parameters:
+      - description: ID хоста
+        in: path
+        name: hostId
+        required: true
+        type: string
+      - default: 1
+        description: Номер страницы
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: Количество на странице
+        in: query
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Объект с массивом data и мета-данными
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Получить артефакты хоста
+      tags:
+      - Artifacts
+  /artifacts/id/{id}:
+    get:
+      description: Возвращает детальную информацию об одном артефакте
+      parameters:
+      - description: ID артефакта
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.WindowsArtifactDTO'
+        "400":
+          description: Неверный формат ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Артефакт не найден
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Получить артефакт по ID
+      tags:
+      - Artifacts
+  /artifacts/search:
+    get:
+      description: Поиск по артефактам с фильтрацией по типу, критичности и текстовому
+        запросу
+      parameters:
+      - description: Поисковый запрос
+        in: query
+        name: q
+        type: string
+      - description: Тип артефакта
+        in: query
+        name: type
+        type: string
+      - description: Уровень серьезности
+        in: query
+        name: severity
+        type: string
+      - default: 1
+        description: Номер страницы
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: Количество на странице
+        in: query
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Результаты поиска и мета-данные
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Поиск артефактов
+      tags:
+      - Artifacts
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Аутентификация пользователя по имени и паролю. Может вернуть токены
+        сразу или потребовать 2FA.
+      parameters:
+      - description: Данные пользователя
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Если требуется 2FA
+          schema:
+            $ref: '#/definitions/models.LoginResponse'
+        "401":
+          description: Неверные учетные данные
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Ошибка генерации токенов
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Вход в систему
+      tags:
+      - Auth
+  /auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: Принимает Refresh Token и выдает новую пару Access/Refresh токенов
+      parameters:
+      - description: Refresh Token
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/requests.RefreshRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/responses.TokenResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Невалидный Refresh Token
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Обновить JWT токены
+      tags:
+      - Auth
+  /auth/register:
+    post:
+      consumes:
+      - application/json
+      description: Создает новый аккаунт. Пароль должен быть не менее 8 символов.
+      parameters:
+      - description: Данные для регистрации
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/requests.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Пользователь успешно создан
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Ошибка валидации или слабый пароль
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Имя пользователя уже занято
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Регистрация пользователя
+      tags:
+      - Auth
+  /auth/verify-2fa:
+    post:
+      consumes:
+      - application/json
+      description: Проверяет временный код подтверждения и выдает финальные JWT токены
+      parameters:
+      - description: ID пользователя и код из приложения
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/requests.Verify2FARequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: JWT токены
+          schema:
+            $ref: '#/definitions/models.TokenResponse'
+        "400":
+          description: Неверный формат запроса
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Неверный 2FA код
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Проверка 2FA кода
+      tags:
+      - Auth
+  /dashboard/stats:
+    get:
+      description: Возвращает агрегированные данные по трафику и угрозам за указанный
+        период времени
+      parameters:
+      - description: 'Начало периода (RFC3339, например: 2023-01-01T00:00:00Z)'
+        in: query
+        name: from
+        type: string
+      - description: Конец периода (RFC3339)
+        in: query
+        name: to
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Статистика трафика, угроз и подтвержденный временной диапазон
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Неверный формат даты
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Ошибка при получении данных из репозиториев
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Получить статистику дашборда
+      tags:
+      - Dashboard
+  /incidents:
+    get:
+      description: Возвращает список последних зарегистрированных инцидентов ИБ
+      parameters:
+      - default: 10
+        description: Количество записей
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.IncidentDTO'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Список последних инцидентов
+      tags:
+      - Incidents
+  /ingest/isolate:
+    post:
+      consumes:
+      - application/json
+      description: Блокирует сетевую активность хоста по его ID на указанное время
+      parameters:
+      - description: Параметры изоляции (duration в минутах)
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/requests.IsolateHostRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Подтверждение изоляции
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Изоляция хоста
+      tags:
+      - Response
+  /ingest/logs:
+    post:
+      consumes:
+      - application/json
+      description: Принимает неструктурированные логи (syslog и др.), парсит их и
+        преобразует в записи трафика
+      parameters:
+      - description: Сырые логи и метаданные
+        in: body
+        name: log_request
+        required: true
+        schema:
+          $ref: '#/definitions/api.NetworkLogRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Количество обработанных записей (entries_processed)
+          schema:
+            additionalProperties:
+              type: integer
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Прием сырых логов
+      tags:
+      - Ingestion
+  /ingest/stats/{hostId}:
+    get:
+      description: Возвращает агрегированную статистику (объемы, протоколы) для конкретного
+        хоста за период
+      parameters:
+      - description: ID хоста
+        in: path
+        name: hostId
+        required: true
+        type: string
+      - description: Начало (RFC3339)
+        in: query
+        name: from
+        type: string
+      - description: Конец (RFC3339)
+        in: query
+        name: to
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.TrafficStats'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Статистика трафика хоста
+      tags:
+      - Analytics
+  /ingest/traffic:
+    post:
+      consumes:
+      - application/json
+      description: Принимает JSON с сетевой активностью от агентов, сохраняет в БД
+        и отправляет в корреляционный движок
+      parameters:
+      - description: Данные сетевого трафика
+        in: body
+        name: traffic
+        required: true
+        schema:
+          $ref: '#/definitions/models.NetworkTraffic'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: 'status: accepted'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Прием структурированного трафика
+      tags:
+      - Ingestion
+  /integrations/scan:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Загружает файл и отправляет его на проверку во внешние антивирусные
+        сервисы
+      parameters:
+      - description: Бинарный файл для сканирования
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ScanResult'
+        "400":
+          description: Файл не предоставлен
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Ошибка сканирования
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Сканировать файл через VirusTotal
+      tags:
+      - Integrations
+securityDefinitions:
+  BearerAuth:
+    description: 'Введите токен в формате: Bearer <your_token>'
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
