@@ -137,7 +137,6 @@ func (h *AuthHandler) Verify2FA(c *gin.Context) {
 }
 
 // Register обрабатывает запрос на регистрацию
-// Register обрабатывает запрос на регистрацию
 func (h *AuthHandler) Register(c *gin.Context) {
 	var req requests.RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

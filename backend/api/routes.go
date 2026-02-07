@@ -13,7 +13,7 @@ import (
 func RegisterRoutes(
 	r *gin.Engine,
 	cfg *config.Config,
-	trafficRepo domain.TrafficRepository,
+	trafficRepo repository.TrafficRepository,
 	artifactRepo domain.ArtifactRepository,
 	aiService domain.AIService,
 	integrationService domain.IntegrationService,
@@ -49,15 +49,11 @@ func RegisterRoutes(
 	apiGroup.Use(authHandler.AuthMiddleware())
 	{
 		// Трафик
-		/*apiGroup.GET("/traffic/:hostId", trafficHandler.GetTrafficByHost)
-		apiGroup.GET("/traffic/stats/:hostId", trafficHandler.GetTrafficStats)
-		apiGroup.POST("/traffic", trafficHandler.SaveTraffic)
-		apiGroup.POST("/traffic/logs", trafficHandler.ProcessNetworkLog)
-		apiGroup.POST("/traffic/isolate", trafficHandler.IsolateHost)
-		apiGroup.GET("/traffic/heatmap", trafficHandler.GetThreatHeatmap)*/
+		apiGroup.GET("/traffic/stats/:hostId", ingestHandler.GetTrafficStats)
+		apiGroup.POST("/traffic/isolate", ingestHandler.IsolateHost)
 
 		// Артефакты
-		apiGroup.GET("/artifacts/:hostId", artifactHandler.GetArtifactsByHost)
+		apiGroup.GET("/artifacts/host/:hostId", artifactHandler.GetArtifactsByHost)
 		apiGroup.GET("/artifacts/id/:id", artifactHandler.GetArtifactByID)
 		apiGroup.POST("/artifacts", artifactHandler.SaveArtifact)
 		apiGroup.GET("/artifacts/search", artifactHandler.SearchArtifacts)
@@ -65,6 +61,7 @@ func RegisterRoutes(
 		// AI и анализ
 		apiGroup.POST("/ai/analyze", aiHandler.AnalyzeRealtime)
 		apiGroup.GET("/ai/patterns", aiHandler.GetAttackPatterns)
+		apiGroup.GET("/ai/patterns/stats", aiHandler.GetPatternStats)
 		apiGroup.POST("/ai/counter-attack", aiHandler.ExecuteCounterAttack)
 		apiGroup.GET("/ai/apt-timeline", aiHandler.GetAPTTimeline)
 		apiGroup.POST("/ai/models/update", aiHandler.UpdateModels)
@@ -80,14 +77,11 @@ func RegisterRoutes(
 		// Инциденты
 		apiGroup.GET("/incidents", incidentHandler.GetIncidents)
 
-		ingest := r.Group("/ingest")
-		{
-			ingest.POST("/traffic", ingestHandler.SaveTraffic)
-			ingest.POST("/logs", ingestHandler.ProcessNetworkLog)
-		}
+		apiGroup.POST("/traffic", ingestHandler.SaveTraffic)
+		apiGroup.POST("traffic/logs", ingestHandler.ProcessNetworkLog)
 
 		apiGroup.GET("/traffic/:hostId", queryHandler.GetTrafficByHost)
-		apiGroup.GET("/heatmap", queryHandler.GetThreatHeatmap)
+		apiGroup.GET("/traffic/heatmap", queryHandler.GetThreatHeatmap)
 	}
 
 	// Публичные эндпоинты

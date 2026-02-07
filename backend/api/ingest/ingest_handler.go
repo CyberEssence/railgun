@@ -7,17 +7,18 @@ import (
 
 	"railgun-core/internal/domain"
 	"railgun-core/internal/domain/models"
+	repository "railgun-core/internal/domain/repository"
 
 	"github.com/gin-gonic/gin"
 )
 
 type IngestHandler struct {
-	trafficRepo    domain.TrafficRepository
+	trafficRepo    repository.TrafficRepository
 	networkLogRepo domain.NetworkLogRepository
 	engine         domain.DetectionEngine // Добавляем движок для анализа на лету
 }
 
-func NewIngestHandler(tr domain.TrafficRepository, nl domain.NetworkLogRepository, de domain.DetectionEngine) *IngestHandler {
+func NewIngestHandler(tr repository.TrafficRepository, nl domain.NetworkLogRepository, de domain.DetectionEngine) *IngestHandler {
 	return &IngestHandler{
 		trafficRepo:    tr,
 		networkLogRepo: nl,
@@ -75,4 +76,65 @@ func (h *IngestHandler) ProcessNetworkLog(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"entries_processed": len(traffic)})
+}
+
+// IsolateHost изолирует хост от сети
+func (h *IngestHandler) IsolateHost(c *gin.Context) {
+	var request struct {
+		HostID   string `json:"host_id" binding:"required"`
+		Reason   string `json:"reason" binding:"required"`
+		Duration int    `json:"duration"` // в минутах, 0 = бессрочно
+	}
+
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Изолируем хост
+	err := h.trafficRepo.IsolateHost(c, request.HostID, request.Reason, request.Duration)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":  "Host isolated successfully",
+		"host_id":  request.HostID,
+		"duration": request.Duration,
+	})
+}
+
+// GetTrafficStats возвращает статистику трафика для указанного хоста
+func (h *IngestHandler) GetTrafficStats(c *gin.Context) {
+	hostID := c.Param("hostId")
+	if hostID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Host ID is required"})
+		return
+	}
+
+	// Получаем параметры запроса
+	fromStr := c.DefaultQuery("from", time.Now().Add(-24*time.Hour).Format(time.RFC3339))
+	toStr := c.DefaultQuery("to", time.Now().Format(time.RFC3339))
+
+	from, err := time.Parse(time.RFC3339, fromStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid 'from' parameter"})
+		return
+	}
+
+	to, err := time.Parse(time.RFC3339, toStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid 'to' parameter"})
+		return
+	}
+
+	// Получаем статистику
+	stats, err := h.trafficRepo.GetTrafficStats(c, hostID, from, to)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, stats)
 }

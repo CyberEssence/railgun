@@ -87,7 +87,7 @@ func main() {
 	api.RegisterRoutes(
 		r,
 		cfg,
-		trafficRepo,
+		*trafficRepo,
 		artifactRepo,
 		aiService,
 		integrationService,

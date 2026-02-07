@@ -5,8 +5,13 @@ import {
   FormControl, InputLabel, Select, MenuItem 
 } from '@mui/material';
 import { Security, BugReport, Speed } from '@mui/icons-material';
+import { useApi } from '../hooks/useApi';
+import { useAuth } from '../context/AuthContext';
 
 export const CounterAttack = () => {
+  const api = useApi();
+  const { isAuthenticated } = useAuth();
+
   const [targetIP, setTargetIP] = useState('');
   const [attackType, setAttackType] = useState('ddos');
   const [intensity, setIntensity] = useState(3);
@@ -28,23 +33,35 @@ export const CounterAttack = () => {
       return;
     }
     
+    if (!isAuthenticated()) {
+      setError('Please login to execute counter-attack');
+      return;
+    }
+    
     setLoading(true);
     setError(null);
     setSuccess(null);
     
     try {
-      const response = await fetch('http://localhost:8080/api/ai/counter-attack', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ target_ip: targetIP, attack_type: attackType, intensity })
+      // Используем useApi для авторизованного запроса
+      const result = await api.post('/api/ai/counter-attack', {
+        target_ip: targetIP,
+        attack_type: attackType,
+        intensity: intensity
       });
       
-      if (!response.ok) throw new Error(await response.text());
-      
-      const result = await response.json();
-      setSuccess(result.message);
+      setSuccess(result.message || 'Counter-attack initiated successfully');
     } catch (err) {
-      setError(err.message);
+      console.error('Counter-attack error:', err);
+      
+      // Обработка ошибок авторизации
+      if (err.message.includes('Authorization') || 
+          err.message.includes('401') || 
+          err.message.includes('authenticated')) {
+        setError('Session expired. Please login again.');
+      } else {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
     }
