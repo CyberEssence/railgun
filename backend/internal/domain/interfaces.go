@@ -47,6 +47,9 @@ type UserRepository interface {
 	SaveTwoFAToken(ctx context.Context, token models.TwoFAToken) error
 	GetTwoFAToken(ctx context.Context, tokenHash string, userID int64) (*models.TwoFAToken, error)
 	MarkTokenAsUsed(ctx context.Context, tokenID int64) error
+	GetTOTPSecret(ctx context.Context, userID int64) (string, error)
+	Enable2FA(ctx context.Context, userID int64, secret string, backupCodes []string) error
+	Disable2FA(ctx context.Context, userID int64) error
 }
 
 type AIService interface {
@@ -69,6 +72,11 @@ type IntegrationService interface {
 type TwoFAService interface {
 	GenerateToken(ctx context.Context, userID int64) (string, error)
 	Validate2FAToken(ctx context.Context, token string, userID int64) (bool, error)
+	Enable2FA(ctx context.Context, userID int64, username string) (map[string]interface{}, error)
+	Disable2FA(ctx context.Context, userID int64) error
+	GenerateNewBackupCodes(ctx context.Context, userID int64) ([]string, error)
+	VerifySetup(ctx context.Context, token string, userID int64) (bool, error)
+	ValidateTOTPToken(ctx context.Context, token string, userID int64) (bool, error)
 }
 
 type DetectionEngine interface {

@@ -71,13 +71,20 @@ type WindowsArtifact struct {
 type User struct {
 	bun.BaseModel `bun:"table:users,alias:u"`
 
-	ID           int64     `bun:"id,pk,autoincrement"`
-	Username     string    `bun:"username,unique,notnull"`
-	Email        string    `bun:"email,unique,notnull"`
-	PasswordHash string    `bun:"password_hash,notnull"`
-	IsActive     bool      `bun:"is_active,default:true"`
-	CreatedAt    time.Time `bun:"created_at,nullzero,notnull,default:current_timestamp"`
-	LastLogin    time.Time `bun:"last_login"`
+	ID           int64  `bun:"id,pk,autoincrement"`
+	Username     string `bun:"username,unique,notnull"`
+	Email        string `bun:"email,unique,notnull"`
+	PasswordHash string `bun:"password_hash,notnull"`
+
+	// Поля для 2FA
+	TOTPSecret      string `bun:"totp_secret"`                  // Зашифрованный секрет
+	TOTPEnabled     bool   `bun:"totp_enabled,default:false"`   // Включена ли 2FA
+	TOTPBackupCodes string `bun:"totp_backup_codes,type:jsonb"` // Резервные коды в JSON
+
+	IsActive  bool      `bun:"is_active,default:true"`
+	CreatedAt time.Time `bun:"created_at,nullzero,notnull,default:current_timestamp"`
+	UpdatedAt time.Time `bun:"updated_at,nullzero,notnull,default:current_timestamp"`
+	LastLogin time.Time `bun:"last_login"`
 }
 
 type TwoFAToken struct {
@@ -171,6 +178,55 @@ func AddCategoryColumnToAttackPatterns(ctx context.Context, db *bun.DB) error {
 	return nil
 }
 
+func Add2FAColumnsToUsers(ctx context.Context, db *bun.DB) error {
+	// Проверяем наличие столбцов 2FA
+	columnsToCheck := []string{
+		"totp_secret",
+		"totp_enabled",
+		"totp_backup_codes",
+		"updated_at",
+	}
+
+	for _, column := range columnsToCheck {
+		var exists bool
+		err := db.NewRaw(`
+			SELECT EXISTS (
+				SELECT 1 
+				FROM information_schema.columns 
+				WHERE table_name = 'users' 
+				AND column_name = ?
+			)
+		`, column).Scan(ctx, &exists)
+
+		if err != nil {
+			return fmt.Errorf("failed to check if column %s exists: %w", column, err)
+		}
+
+		if !exists {
+			var alterSQL string
+			switch column {
+			case "totp_secret":
+				alterSQL = `ALTER TABLE users ADD COLUMN totp_secret VARCHAR`
+			case "totp_enabled":
+				alterSQL = `ALTER TABLE users ADD COLUMN totp_enabled BOOLEAN DEFAULT false`
+			case "totp_backup_codes":
+				// Правильный синтаксис для JSONB по умолчанию
+				alterSQL = `ALTER TABLE users ADD COLUMN totp_backup_codes JSONB DEFAULT '[]'`
+			case "updated_at":
+				alterSQL = `ALTER TABLE users ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`
+			}
+
+			_, err = db.NewRaw(alterSQL).Exec(ctx)
+			if err != nil {
+				return fmt.Errorf("failed to add column %s: %w", column, err)
+			}
+			log.Printf("Added column %s to users table", column)
+		}
+	}
+
+	return nil
+}
+
 // RunMigrations запускает миграции базы данных
 func RunMigrations(ctx context.Context, db *bun.DB) error {
 	models := []interface{}{
@@ -193,6 +249,10 @@ func RunMigrations(ctx context.Context, db *bun.DB) error {
 			Exec(ctx); err != nil {
 			return err
 		}
+	}
+
+	if err := Add2FAColumnsToUsers(ctx, db); err != nil {
+		return fmt.Errorf("failed to add 2FA columns: %w", err)
 	}
 
 	// Проверяем наличие столбца threat_level

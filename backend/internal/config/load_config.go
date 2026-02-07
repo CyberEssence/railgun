@@ -53,6 +53,10 @@ func LoadConfig() (*Config, error) {
 		BruteForceWindow:    time.Duration(getEnvAsInt("DETECTION_BF_WINDOW_SEC", 60)) * time.Second,
 	}
 
+	if cfg.JWTConfig.Issuer == "" {
+		cfg.JWTConfig.Issuer = "Railgun SIEM"
+	}
+
 	return cfg, nil
 }
 

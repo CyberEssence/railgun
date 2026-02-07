@@ -133,13 +133,22 @@ func (w *WindowsArtifact) ToWindowsArtifactDTO() dto.WindowsArtifactDTO {
 
 // User представляет пользователя системы
 type User struct {
-	ID           int64     `bun:"id,pk,autoincrement" json:"id"`
-	Username     string    `bun:"username,unique,notnull" json:"username"`
-	Email        string    `bun:"email,unique,notnull" json:"email"`
-	PasswordHash string    `bun:"password_hash,notnull" json:"-"`
-	IsActive     bool      `bun:"is_active,default:true" json:"is_active"`
-	CreatedAt    time.Time `bun:"created_at,nullzero,notnull,default:current_timestamp" json:"created_at"`
-	LastLogin    time.Time `bun:"last_login" json:"last_login"`
+	bun.BaseModel `bun:"table:users"`
+
+	ID           int64  `bun:"id,pk,autoincrement"`
+	Username     string `bun:"username,unique,notnull"`
+	Email        string `bun:"email,unique,notnull"`
+	PasswordHash string `bun:"password_hash,notnull" json:"-"`
+
+	// Обязательно должно совпадать с БД!
+	TOTPSecret      string `bun:"totp_secret"`
+	TOTPEnabled     bool   `bun:"totp_enabled,default:false"`
+	TOTPBackupCodes string `bun:"totp_backup_codes"` // Просто string без type:jsonb
+
+	CreatedAt time.Time `bun:"created_at,default:current_timestamp"`
+	UpdatedAt time.Time `bun:"updated_at,default:current_timestamp"`
+	IsActive  bool      `bun:"is_active,default:true"`
+	LastLogin time.Time `bun:"last_login"`
 }
 
 // TwoFAToken модель для хранения токенов 2FA

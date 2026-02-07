@@ -1,8 +1,6 @@
 package api
 
 import (
-	"bytes"
-	"io"
 	"log"
 	"net/http"
 	"time"
@@ -66,7 +64,24 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	// Если включена 2FA
+	// Если у пользователя включена 2FA, возвращаем специальный ответ
+	if user.TOTPEnabled {
+		c.JSON(http.StatusOK, gin.H{
+			"requires_2fa": true,
+			"user_id":      user.ID,
+			"message":      "Please enter your 2FA code",
+		})
+		return
+	}
+
+	// Если 2FA не включена - сразу выдаем токены
+	accessToken, refreshToken, expiresIn, err := h.generateTokens(user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate tokens"})
+		return
+	}
+
+	/*// Если включена 2FA
 	if h.twoFAService != nil {
 		token, err := h.twoFAService.GenerateToken(c.Request.Context(), user.ID)
 		if err != nil {
@@ -90,7 +105,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate tokens"})
 		return
-	}
+	}*/
 
 	c.JSON(http.StatusOK, models.TokenResponse{
 		AccessToken:  accessToken,
@@ -112,34 +127,31 @@ func (h *AuthHandler) Login(c *gin.Context) {
 // @Failure      401  {object}  map[string]string "Неверный 2FA код"
 // @Router       /auth/verify-2fa [post]
 func (h *AuthHandler) Verify2FA(c *gin.Context) {
-	// Логируем входящий запрос
-	body, _ := c.GetRawData()
-	log.Printf("Incoming 2FA verification request: %s", string(body))
-	c.Request.Body = io.NopCloser(bytes.NewBuffer(body)) // Возвращаем body для повторного чтения
-
 	var req requests.Verify2FARequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Printf("Invalid request format: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid request format",
-			"details": gin.H{
-				"expected_fields": []string{"user_id (number)", "token (string)"},
-				"error":           err.Error(),
-			},
+			"error":   "Invalid request format",
+			"details": err.Error(),
 		})
 		return
 	}
 
-	log.Printf("Verifying 2FA token for user %d", req.UserID)
+	log.Printf("Verifying TOTP code for user %d", req.UserID)
 
-	valid, err := h.twoFAService.Validate2FAToken(c, req.Token, req.UserID)
+	valid, err := h.twoFAService.ValidateTOTPToken(c.Request.Context(), req.Token, req.UserID)
 	if err != nil || !valid {
-		log.Printf("Token validation failed: %v", err)
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid 2FA token"})
+		log.Printf("TOTP validation failed: %v", err)
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":   "Invalid 2FA code",
+			"details": err.Error(), // Добавляем детали для отладки
+		})
 		return
 	}
 
+	log.Printf("TOTP validation successful for user %d", req.UserID)
+
+	// Генерация JWT токенов
 	accessToken, refreshToken, expiresIn, err := h.generateTokens(req.UserID)
 	if err != nil {
 		log.Printf("Token generation failed: %v", err)
@@ -349,4 +361,172 @@ func (h *AuthHandler) generateTokens(userID int64) (string, string, int, error) 
 	}
 
 	return accessTokenString, refreshTokenString, int(accessTokenTTL.Seconds()), nil
+}
+
+// Enable2FA godoc
+// @Summary      Включение 2FA
+// @Description  Генерирует секрет и QR-код для настройки Google Authenticator/Yandex Key
+// @Tags         Auth
+// @Security     BearerAuth
+// @Accept       json
+// @Produce      json
+// @Param        request body requests.Enable2FARequest true "ID пользователя"
+// @Success      200  {object}  map[string]interface{} "Данные для настройки 2FA"
+// @Failure      401  {object}  map[string]string "Пользователь не авторизован"
+// @Router       /api/auth/2fa/enable [post]
+func (h *AuthHandler) Enable2FA(c *gin.Context) {
+	userID := c.GetInt64("user_id")
+
+	user, err := h.userRepo.GetUserByID(c.Request.Context(), userID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
+	result, err := h.twoFAService.Enable2FA(c.Request.Context(), userID, user.Username)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "Failed to enable 2FA",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
+}
+
+// Verify2FASetup godoc
+// @Summary      Подтверждение настройки 2FA
+// @Description  Проверяет первый код из приложения для подтверждения корректной настройки
+// @Tags         Auth
+// @Security     BearerAuth
+// @Accept       json
+// @Produce      json
+// @Param        request body requests.Verify2FASetupRequest true "ID пользователя и код"
+// @Success      200  {object}  map[string]string "Статус подтверждения"
+// @Failure      400  {object}  map[string]string "Неверный код"
+// @Router       /api/auth/2fa/verify-setup [post]
+func (h *AuthHandler) Verify2FASetup(c *gin.Context) {
+	var req struct {
+		Token string `json:"token" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Token required"})
+		return
+	}
+
+	userID := c.GetInt64("user_id")
+	valid, err := h.twoFAService.VerifySetup(c.Request.Context(), req.Token, userID)
+
+	if err != nil || !valid {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Invalid verification code",
+			"message": "Please check the code from your authenticator app",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "success",
+		"message": "2FA has been successfully enabled",
+	})
+}
+
+// Get2FAStatus godoc
+// @Summary      Получение статуса 2FA
+// @Description  Проверяет, включена ли 2FA для пользователя
+// @Tags         Auth
+// @Security     BearerAuth
+// @Produce      json
+// @Success      200  {object}  map[string]interface{} "Статус 2FA"
+// @Router       /api/auth/2fa/status [get]
+func (h *AuthHandler) Get2FAStatus(c *gin.Context) {
+	userIDValue, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	userID := userIDValue.(int64)
+	user, err := h.userRepo.GetUserByID(c.Request.Context(), userID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"enabled":          user.TOTPEnabled,
+		"has_backup_codes": user.TOTPBackupCodes != "[]" && user.TOTPBackupCodes != "",
+	})
+}
+
+// Disable2FA godoc
+// @Summary      Отключение 2FA
+// @Description  Отключает двухфакторную аутентификацию для пользователя
+// @Tags         Auth
+// @Security     BearerAuth
+// @Accept       json
+// @Produce      json
+// @Param        request body requests.Disable2FARequest true "ID пользователя и подтверждение"
+// @Success      200  {object}  map[string]string "Статус отключения"
+// @Failure      400  {object}  map[string]string "Неверный запрос"
+// @Router       /api/auth/2fa/disable [post]
+func (h *AuthHandler) Disable2FA(c *gin.Context) {
+	// Берем user_id из JWT
+	userIDValue, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	userID := userIDValue.(int64)
+
+	var req struct {
+		Password string `json:"password" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Password is required"})
+		return
+	}
+
+	// Проверяем пароль
+	user, err := h.userRepo.GetUserByID(c.Request.Context(), userID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid password"})
+		return
+	}
+
+	err = h.twoFAService.Disable2FA(c.Request.Context(), userID)
+	if err != nil {
+		log.Printf("Failed to disable 2FA: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to disable 2FA"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "success",
+		"message": "2FA has been disabled",
+	})
+}
+
+func (h *AuthHandler) GenerateNewBackupCodes(c *gin.Context) {
+	userID := c.GetInt64("user_id")
+
+	backupCodes, err := h.twoFAService.GenerateNewBackupCodes(c.Request.Context(), userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate backup codes"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"backup_codes": backupCodes,
+		"message":      "Save these codes in a secure place!",
+	})
 }

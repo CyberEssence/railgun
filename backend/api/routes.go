@@ -1,6 +1,8 @@
 package api
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 
 	ingest "railgun-core/api/ingest"
@@ -39,6 +41,15 @@ func RegisterRoutes(
 	ingestHandler := ingest.NewIngestHandler(trafficRepo, networkLogRepo, detectionRepo)
 	queryHandler := web.NewQueryHandler(trafficRepo, analyticsRepo)
 
+	// Тестовый маршрут для проверки middleware
+	r.GET("/api/test-auth", authHandler.AuthMiddleware(), func(c *gin.Context) {
+		userID, _ := c.Get("user_id")
+		c.JSON(http.StatusOK, gin.H{
+			"message": "Authenticated!",
+			"user_id": userID,
+		})
+	})
+
 	// Группа аутентификации
 	authGroup := r.Group("/api/auth")
 	{
@@ -46,6 +57,16 @@ func RegisterRoutes(
 		authGroup.POST("/register", authHandler.Register)
 		authGroup.POST("/verify-2fa", authHandler.Verify2FA)
 		authGroup.POST("/refresh", authHandler.RefreshToken)
+
+		protected := authGroup.Group("")
+		protected.Use(authHandler.AuthMiddleware())
+		{
+			protected.POST("/2fa/enable", authHandler.Enable2FA)
+			protected.POST("/2fa/verify-setup", authHandler.Verify2FASetup)
+			protected.POST("/2fa/disable", authHandler.Disable2FA)
+			protected.POST("/2fa/new-backup-codes", authHandler.GenerateNewBackupCodes)
+			protected.GET("/2fa/status", authHandler.Get2FAStatus)
+		}
 	}
 
 	// Группа API с аутентификацией

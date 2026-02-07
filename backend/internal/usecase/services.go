@@ -30,7 +30,7 @@ func SetupServices(db *bun.DB, config *config.Config) *Services {
 			VirusTotalAPIKey: config.Integration.VirusTotalAPIKey,
 			MaxFileSize:      config.Integration.MaxFileSizeMB * 1024 * 1024,
 		}),
-		TwoFAService:    services.NewTwoFAService(userRepo),
+		TwoFAService:    services.NewTwoFAService(userRepo, config),
 		DetectionEngine: detEngine,
 	}
 }

@@ -3,6 +3,7 @@ package persistence
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -84,8 +85,23 @@ func (r *UserRepository) CreateUser(ctx context.Context, user models.User) error
 	}
 	user.PasswordHash = string(hashedPassword)
 
+	// Устанавливаем значения по умолчанию для 2FA полей
+	if user.TOTPSecret == "" {
+		user.TOTPSecret = ""
+	}
+	if !user.TOTPEnabled {
+		user.TOTPEnabled = false
+	}
+	if user.TOTPBackupCodes == "" {
+		// Правильное значение JSONB для PostgreSQL
+		user.TOTPBackupCodes = "[]"
+	}
+
 	if user.CreatedAt.IsZero() {
 		user.CreatedAt = time.Now()
+	}
+	if user.UpdatedAt.IsZero() {
+		user.UpdatedAt = time.Now()
 	}
 
 	_, err = r.db.NewInsert().Model(&user).Exec(ctx)
@@ -183,6 +199,50 @@ func (r *UserRepository) MarkTokenAsUsed(ctx context.Context, tokenID int64) err
 		Exec(ctx)
 
 	return err
+}
+
+func (r *UserRepository) Enable2FA(ctx context.Context, userID int64, secret string, backupCodes []string) error {
+	backupCodesJSON, err := json.Marshal(backupCodes)
+	if err != nil {
+		return err
+	}
+
+	_, err = r.db.NewUpdate().
+		Model(&models.User{}).
+		Set("totp_secret = ?", secret).
+		Set("totp_enabled = ?", true).
+		Set("totp_backup_codes = ?", string(backupCodesJSON)).
+		Where("id = ?", userID).
+		Exec(ctx)
+
+	return err
+}
+
+func (r *UserRepository) Disable2FA(ctx context.Context, userID int64) error {
+	_, err := r.db.NewUpdate().
+		Model(&models.User{}).
+		Set("totp_secret = ?", "").
+		Set("totp_enabled = ?", false).
+		Set("totp_backup_codes = ?", "[]").
+		Where("id = ?", userID).
+		Exec(ctx)
+
+	return err
+}
+
+func (r *UserRepository) GetTOTPSecret(ctx context.Context, userID int64) (string, error) {
+	var user models.User
+	err := r.db.NewSelect().
+		Model(&user).
+		Column("totp_secret").
+		Where("id = ?", userID).
+		Scan(ctx)
+
+	if err != nil {
+		return "", err
+	}
+
+	return user.TOTPSecret, nil
 }
 
 // Вспомогательная функция для проверки, является ли строка хешированным паролем

@@ -8,4 +8,5 @@ type Config struct {
 	Security    SecurityConfig
 	Auth        AuthConfig
 	Detection   DetectionConfig
+	JWTConfig   JWTConfig `yaml:"security"`
 }
