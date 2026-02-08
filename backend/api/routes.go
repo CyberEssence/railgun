@@ -46,6 +46,16 @@ func RegisterRoutes(
 		authGroup.POST("/register", authHandler.Register)
 		authGroup.POST("/verify-2fa", authHandler.Verify2FA)
 		authGroup.POST("/refresh", authHandler.RefreshToken)
+
+		protected := authGroup.Group("")
+		protected.Use(authHandler.AuthMiddleware())
+		{
+			protected.POST("/2fa/enable", authHandler.Enable2FA)
+			protected.POST("/2fa/verify-setup", authHandler.Verify2FASetup)
+			protected.POST("/2fa/disable", authHandler.Disable2FA)
+			protected.POST("/2fa/new-backup-codes", authHandler.GenerateNewBackupCodes)
+			protected.GET("/2fa/status", authHandler.Get2FAStatus)
+		}
 	}
 
 	// Группа API с аутентификацией

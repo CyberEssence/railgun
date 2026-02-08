@@ -16,6 +16,7 @@ import { Login } from './pages/Login';
 import { PrivateRoute } from './components/PrivateRoute';
 import { FileScanner } from './pages/FileScanner';
 import { Box } from '@mui/material';
+import { TwoFASettings } from './components/TwoFASettings';
 
 const theme = createTheme({
   palette: {
@@ -59,6 +60,14 @@ function App() {
               <Route path="/ai-models" element={<PrivateRoute><AIModels /></PrivateRoute>} />
               <Route path="/counter-attack" element={<PrivateRoute><CounterAttack /></PrivateRoute>} />
               <Route path="/file-scanner" element={<PrivateRoute><FileScanner /></PrivateRoute>} />
+              <Route 
+               path="/settings/2fa" 
+                element={
+                  <PrivateRoute>
+                   <TwoFASettings />
+                  </PrivateRoute>
+                } 
+              />
             </Routes>
           </Box>
       </AuthProvider>

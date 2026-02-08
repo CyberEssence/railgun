@@ -35,7 +35,7 @@ import (
 // @host            localhost:8080
 // @BasePath        /api
 func main() {
-	// Загрузка конфигурации
+	// Зарузка конфигурации
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
@@ -77,7 +77,7 @@ func main() {
 		VirusTotalAPIKey: cfg.Integration.VirusTotalAPIKey,
 		MaxFileSize:      cfg.Integration.MaxFileSizeMB,
 	})
-	twoFAService := services.NewTwoFAService(userRepo)
+	twoFAService := services.NewTwoFAService(userRepo, cfg)
 
 	// Настройка Gin
 	r := gin.Default()
@@ -85,7 +85,7 @@ func main() {
 
 	// CORS
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     cfg.Server.CORSAllowOrigins,
+		AllowOrigins:     []string{"http://localhost:3000"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},

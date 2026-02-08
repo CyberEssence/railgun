@@ -1,0 +1,5 @@
+security:
+  encryption_key: ""
+  issuer: "Railgun SIEM"
+  totp_period: 30
+  totp_digits: 6
