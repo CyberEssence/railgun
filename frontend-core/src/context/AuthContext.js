@@ -23,6 +23,7 @@ export const AuthProvider = ({ children }) => {
     setLoading(false);
   }, []);
 
+  // Функция для обычного логина
   const login = async (username, password) => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
@@ -32,40 +33,34 @@ export const AuthProvider = ({ children }) => {
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || 'Login failed');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Login failed');
       }
 
       const data = await response.json();
-      console.log('Login response:', data);
       
-      // Проверяем требуется ли 2FA (используем разные варианты написания)
-      if (data.requires_2fa || data.requiresTwoFA || data.requires2FA) {
+      // Если требуется 2FA
+      if (data.requires_2fa) {
         return {
           requires2FA: true,
-          userId: data.user_id || data.userId,
-          message: data.message,
-          twoFAToken: data.two_fa_token || data.twoFAToken,
+          userId: data.user_id,
+          message: data.message || 'Please enter your 2FA code',
         };
       }
       
-      // Если 2FA не требуется, сразу сохраняем токены
-      if (data.access_token || data.accessToken) {
-        const userData = {
-          id: data.user_id || data.userId || 1,
-          username: username,
-          email: data.email,
-          token: data.access_token || data.accessToken,
-          refreshToken: data.refresh_token || data.refreshToken,
-          expiresIn: data.expires_in,
-        };
-        
-        setUser(userData);
-        localStorage.setItem('user', JSON.stringify(userData));
-        return { success: true, user: userData };
-      }
+      // Если 2FA не требуется
+      const userData = {
+        id: data.user_id,
+        username: username,
+        email: data.email,
+        token: data.access_token,
+        refreshToken: data.refresh_token,
+        expiresIn: data.expires_in,
+      };
       
-      throw new Error('Unexpected login response format');
+      setUser(userData);
+      localStorage.setItem('user', JSON.stringify(userData));
+      return { success: true, user: userData };
       
     } catch (error) {
       console.error('Login error:', error);
@@ -73,10 +68,9 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Верификация TOTP кода
   const verify2FA = async (userId, token) => {
     try {
-      console.log('Sending 2FA verification:', { userId, token });
-      
       const response = await fetch(`${API_BASE_URL}/api/auth/verify-2fa`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -86,40 +80,186 @@ export const AuthProvider = ({ children }) => {
         }),
       });
 
-      console.log('2FA response status:', response.status);
-      
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('2FA error response:', errorText);
-        throw new Error(errorText || '2FA verification failed');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Invalid 2FA code');
       }
 
       const data = await response.json();
-      console.log('2FA success response:', data);
-      
-      // Проверяем наличие токенов в ответе
-      if (!data.access_token && !data.accessToken) {
-        throw new Error('No access token received from server');
-      }
       
       const userData = {
         id: userId,
         username: data.username || 'User',
         email: data.email,
-        token: data.access_token || data.accessToken,
-        refreshToken: data.refresh_token || data.refreshToken,
-        expiresIn: data.expires_in || 3600,
+        token: data.access_token,
+        refreshToken: data.refresh_token,
+        expiresIn: data.expires_in,
       };
-      
-      console.log('User data to save:', userData);
       
       setUser(userData);
       localStorage.setItem('user', JSON.stringify(userData));
-      
       return true;
       
     } catch (error) {
       console.error('2FA verification error:', error);
+      throw error;
+    }
+  };
+
+  // Включение 2FA
+  const enable2FA = async () => {
+    try {
+      const token = user?.token;
+      if (!token) throw new Error('Not authenticated');
+
+      const response = await fetch(`${API_BASE_URL}/api/auth/2fa/enable`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to enable 2FA');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Enable 2FA error:', error);
+      throw error;
+    }
+  };
+
+  // Подтверждение настройки 2FA
+  const verify2FASetup = async (token) => {
+    try {
+      const userToken = user?.token;
+      if (!userToken) throw new Error('Not authenticated');
+
+      console.log('🔐 Sending 2FA setup verification request...', {
+        url: `${API_BASE_URL}/api/auth/2fa/verify-setup`,
+        tokenLength: token?.length,
+        authToken: userToken.substring(0, 20) + '...'
+      });
+
+      const response = await fetch(`${API_BASE_URL}/api/auth/2fa/verify-setup`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${userToken}`,
+        },
+        body: JSON.stringify({ token }),
+      });
+
+      console.log('Response received:', {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok
+      });
+
+      if (!response.ok) {
+        // Пытаемся получить ошибку в JSON формате
+        let errorMessage = `HTTP ${response.status}`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch (e) {
+          // Если не JSON, читаем как текст
+          const text = await response.text();
+          errorMessage = text || errorMessage;
+        }
+        throw new Error(errorMessage);
+      }
+
+      const data = await response.json();
+      console.log('Verify setup success:', data);
+      
+      // Возвращаем полные данные для обновления состояния
+      return {
+        success: true,
+        data: data,
+        message: data.message || '2FA setup verified successfully!'
+      };
+
+    } catch (error) {
+      console.error('Verify 2FA setup error:', error);
+      throw error;
+    }
+  };
+
+  // Отключение 2FA
+  const disable2FA = async (password) => {
+    try {
+      const userToken = user?.token;
+      if (!userToken) throw new Error('Not authenticated');
+
+      const response = await fetch(`${API_BASE_URL}/api/auth/2fa/disable`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${userToken}`,
+        },
+        body: JSON.stringify({ password }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to disable 2FA');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Disable 2FA error:', error);
+      throw error;
+    }
+  };
+
+  // Получение статуса 2FA
+  const get2FAStatus = async () => {
+    try {
+      const token = user?.token;
+      if (!token) throw new Error('Not authenticated');
+
+      const response = await fetch(`${API_BASE_URL}/api/auth/2fa/status`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to get 2FA status');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Get 2FA status error:', error);
+      throw error;
+    }
+  };
+
+  // Генерация новых резервных кодов
+  const generateBackupCodes = async () => {
+    try {
+      const token = user?.token;
+      if (!token) throw new Error('Not authenticated');
+
+      const response = await fetch(`${API_BASE_URL}/api/auth/2fa/new-backup-codes`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate backup codes');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Generate backup codes error:', error);
       throw error;
     }
   };
@@ -139,12 +279,11 @@ export const AuthProvider = ({ children }) => {
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || 'Registration failed');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Registration failed');
       }
 
-      const data = await response.json();
-      return { success: true };
+      return await response.json();
     } catch (error) {
       console.error('Registration error:', error);
       throw error;
@@ -155,32 +294,9 @@ export const AuthProvider = ({ children }) => {
     return user?.token;
   };
 
-  /*const isAuthenticated = () => {
-    const token = getToken();
-    return !!token;
-  };*/
-
   const isAuthenticated = useCallback(() => {
     return !!user?.token;
   }, [user]);
-
-  const token = getToken();
-
-  // Тестовая функция для проверки API
-  const testAuthAPI = async () => {
-    try {
-      const testResponse = await fetch(`${API_BASE_URL}/api/ai/models`, {
-        headers: {
-          'Authorization': `Bearer ${getToken()}`,
-        },
-      });
-      console.log('Test API response:', await testResponse.text());
-      return testResponse.ok;
-    } catch (error) {
-      console.error('Test API error:', error);
-      return false;
-    }
-  };
 
   return (
     <AuthContext.Provider
@@ -191,10 +307,13 @@ export const AuthProvider = ({ children }) => {
         logout,
         verify2FA,
         register,
+        enable2FA,
+        verify2FASetup,
+        disable2FA,
+        get2FAStatus,
+        generateBackupCodes,
         getToken,
         isAuthenticated,
-        token,
-        testAuthAPI,
       }}
     >
       {children}
