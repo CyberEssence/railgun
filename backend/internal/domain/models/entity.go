@@ -393,11 +393,12 @@ type TokenResponse struct {
 }
 
 type EventCorrelation struct {
-	Type      string    `json:"type"`      // например, "login_attempt" или "network_flow"
-	SourceIP  string    `json:"source_ip"` // IP атакующего или источника трафика
-	HostID    string    `json:"host_id"`   // Идентификатор хоста (ДОБАВЛЕНО)
-	Success   bool      `json:"success"`   // успешно или нет
-	Timestamp time.Time `json:"timestamp"`
+	Type      string                 `json:"type"`      // например, "login_attempt" или "network_flow"
+	SourceIP  string                 `json:"source_ip"` // IP атакующего или источника трафика
+	HostID    string                 `json:"host_id"`   // Идентификатор хоста (ДОБАВЛЕНО)
+	Success   bool                   `json:"success"`   // успешно или нет
+	Timestamp time.Time              `json:"timestamp"`
+	Data      map[string]interface{} `json:"data,omitempty"`
 }
 
 type Incident struct {

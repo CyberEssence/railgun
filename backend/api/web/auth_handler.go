@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -500,4 +501,63 @@ func (h *AuthHandler) GenerateNewBackupCodes(c *gin.Context) {
 		"backup_codes": backupCodes,
 		"message":      "Save these codes in a secure place!",
 	})
+}
+
+// Аутентификация агентов в вашем SIEM
+func (h *AuthHandler) AgentAuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Проверка токена агента
+		token := c.GetHeader("X-Agent-Token")
+		if token == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Agent token required"})
+			return
+		}
+
+		// Валидация токена (можно использовать JWT или статические токены)
+		agentID, err := validateAgentToken(token)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid agent token"})
+			return
+		}
+
+		c.Set("agent_id", agentID)
+		c.Next()
+	}
+}
+
+// Генерация токенов для агентов
+func GenerateAgentToken(hostID string) (string, error) {
+	claims := jwt.MapClaims{
+		"host_id": hostID,
+		"type":    "agent",
+		"exp":     time.Now().Add(24 * 365 * time.Hour).Unix(), // 1 год
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString([]byte("your-agent-secret"))
+}
+
+// validateAgentToken проверяет токен агента
+func validateAgentToken(token string) (string, error) {
+	// Для начала можно использовать простую проверку JWT
+	parsedToken, err := jwt.Parse(token, func(token *jwt.Token) (interface{}, error) {
+		// В реальном приложении используйте секрет из конфигурации
+		return []byte("your-agent-secret"), nil
+	})
+
+	if err != nil || !parsedToken.Valid {
+		return "", fmt.Errorf("invalid token")
+	}
+
+	claims, ok := parsedToken.Claims.(jwt.MapClaims)
+	if !ok {
+		return "", fmt.Errorf("invalid token claims")
+	}
+
+	hostID, ok := claims["host_id"].(string)
+	if !ok {
+		return "", fmt.Errorf("host_id not found in token")
+	}
+
+	return hostID, nil
 }

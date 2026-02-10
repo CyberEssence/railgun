@@ -1,0 +1,25 @@
+[Unit]
+Description=Linux Agent for Railgun SIEM
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=agent
+Group=agent
+WorkingDirectory=/opt/linux-agent
+ExecStart=/opt/linux-agent/agent
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Security
+ProtectSystem=strict
+ReadWritePaths=/opt/linux-agent /var/log
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

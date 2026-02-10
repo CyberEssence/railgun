@@ -1,0 +1,35 @@
+host_id: ""  # Автогенерация если пусто
+hostname: "" # Автогенерация если пусто
+
+collector:
+  system: true
+  network: true
+  processes: true
+  security: true
+  docker: false
+  interval: 30s
+
+kafka:
+  enabled: true
+  brokers:
+    - "kafka1:9092"
+    - "kafka2:9092"
+  topic: "siem-logs"
+  sasl: false
+  username: ""
+  password: ""
+
+http:
+  enabled: true
+  url: "http://localhost:8080"
+  token: ""
+  batch_size: 100
+
+elastic:
+  enabled: false
+  url: "http://elasticsearch:9200"
+  username: "elastic"
+  password: ""
+  index: "siem-logs-%{+yyyy.MM.dd}"
+
+log_level: "info"

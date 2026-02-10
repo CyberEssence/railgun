@@ -3,6 +3,7 @@ package api
 import (
 	"github.com/gin-gonic/gin"
 
+	api "railgun-core/api/ingest"
 	ingest "railgun-core/api/ingest"
 	web "railgun-core/api/web"
 	_ "railgun-core/docs"
@@ -28,6 +29,9 @@ func RegisterRoutes(
 	detectionRepo domain.DetectionEngine,
 	analyticsRepo domain.AnalyticsRepository,
 ) {
+
+	// Инициализация монитора агентов
+	agentMonitor := api.NewAgentMonitor()
 	// Инициализация обработчиков
 	authHandler := web.NewAuthHandler(cfg, twoFAService, userRepo)
 	aiHandler := web.NewAIHandler(aiService)
@@ -36,7 +40,7 @@ func RegisterRoutes(
 	dashboardHandler := web.NewDashboardHandler(trafficRepo, aiService)
 	//trafficHandler := NewTrafficHandler(trafficRepo)
 	incidentHandler := web.NewIncidentHandler(incidentRepo)
-	ingestHandler := ingest.NewIngestHandler(trafficRepo, networkLogRepo, detectionRepo)
+	ingestHandler := ingest.NewIngestHandler(trafficRepo, networkLogRepo, detectionRepo, agentMonitor)
 	queryHandler := web.NewQueryHandler(trafficRepo, analyticsRepo)
 
 	// Группа аутентификации
@@ -65,6 +69,11 @@ func RegisterRoutes(
 		// Трафик
 		apiGroup.GET("/traffic/stats/:hostId", ingestHandler.GetTrafficStats)
 		apiGroup.POST("/traffic/isolate", ingestHandler.IsolateHost)
+
+		// Настройка роутинга
+		apiGroup.POST("/ingest/traffic", ingestHandler.SaveTraffic)
+		apiGroup.POST("/ingest/agent", ingestHandler.ProcessAgentData)
+		apiGroup.GET("/ingest/agents/status", ingestHandler.GetAgentsStatus)
 
 		// Артефакты
 		apiGroup.GET("/artifacts/host/:hostId", artifactHandler.GetArtifactsByHost)

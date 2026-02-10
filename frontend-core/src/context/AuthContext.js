@@ -138,7 +138,7 @@ export const AuthProvider = ({ children }) => {
       const userToken = user?.token;
       if (!userToken) throw new Error('Not authenticated');
 
-      console.log('🔐 Sending 2FA setup verification request...', {
+      console.log('Sending 2FA setup verification request...', {
         url: `${API_BASE_URL}/api/auth/2fa/verify-setup`,
         tokenLength: token?.length,
         authToken: userToken.substring(0, 20) + '...'
