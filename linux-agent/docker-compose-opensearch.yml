@@ -1,3 +1,4 @@
+# docker-compose-opensearch-fixed.yml
 version: '3.8'
 services:
   opensearch:
@@ -9,8 +10,7 @@ services:
       - discovery.type=single-node
       - bootstrap.memory_lock=true
       - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
-      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=
-      - plugins.security.disabled=true
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=MyStrongPassword123!
     ulimits:
       memlock:
         soft: -1
@@ -22,6 +22,11 @@ services:
       - "9600:9600"
     networks:
       - opensearch-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sk -u admin:MyStrongPassword123! https://localhost:9200/_cluster/health | grep -q 'status' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
   opensearch-dashboards:
     image: opensearchproject/opensearch-dashboards:2.12.0
@@ -29,15 +34,21 @@ services:
     ports:
       - "5601:5601"
     environment:
-      OPENSEARCH_HOSTS: '["http://opensearch:9200"]'
+      OPENSEARCH_HOSTS: '["https://opensearch:9200"]'
       OPENSEARCH_USERNAME: admin
-      # paste your opensearch password
+      # paste your pass
       OPENSEARCH_PASSWORD: 
-      DISABLE_SECURITY_DASHBOARDS_PLUGIN: "true"
+      OPENSEARCH_SSL_VERIFICATIONMODE: none
     depends_on:
-      - opensearch
+      opensearch:
+        condition: service_healthy
     networks:
       - opensearch-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5601/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
 volumes:
   opensearch-data:

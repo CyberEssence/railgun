@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strconv"
 	"strings"
@@ -11,29 +10,47 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+type Config struct {
+	HostID    string          `yaml:"host_id"`
+	Hostname  string          `yaml:"hostname"`
+	Collector CollectorConfig `yaml:"collector"`
+	Sender    SenderConfig    `yaml:"sender"`
+	SIEM      SIEMConfig      `yaml:"siem"`    // Приоритет 1 - прямо в SIEM
+	Kafka     KafkaConfig     `yaml:"kafka"`   // Приоритет 2 - Kafka
+	Elastic   ElasticConfig   `yaml:"elastic"` // Приоритет 3 - Elasticsearch
+	LogLevel  string          `yaml:"log_level"`
+}
+
 type CollectorConfig struct {
-	System    bool          `yaml:"system" default:"true"`
-	Network   bool          `yaml:"network" default:"true"`
-	Processes bool          `yaml:"processes" default:"true"`
+	System  bool `yaml:"system" default:"true"`
+	Network bool `yaml:"network" default:"true"`
+	// Отключили по умолчанию, иначе будет большая нагрузка
+	Processes bool          `yaml:"processes" default:"false"`
 	Security  bool          `yaml:"security" default:"true"`
 	Docker    bool          `yaml:"docker" default:"false"`
-	Interval  time.Duration `yaml:"interval" default:"30s"`
+	Interval  time.Duration `yaml:"interval" default:"60s"`
+}
+
+type SenderConfig struct {
+	BatchSize     int           `yaml:"batch_size" default:"50"`
+	FlushInterval time.Duration `yaml:"flush_interval" default:"10s"`
+	RetryCount    int           `yaml:"retry_count" default:"3"`
+	RetryBackoff  time.Duration `yaml:"retry_backoff" default:"1s"`
+}
+
+type SIEMConfig struct {
+	Enabled bool   `yaml:"enabled" default:"true"`
+	URL     string `yaml:"url" default:"http://localhost:8080"`
+	Token   string `yaml:"token"`
 }
 
 type KafkaConfig struct {
-	Enabled  bool     `yaml:"enabled" default:"true"`
+	Enabled  bool     `yaml:"enabled" default:"false"`
 	Brokers  []string `yaml:"brokers"`
 	Topic    string   `yaml:"topic" default:"siem-logs"`
 	SASL     bool     `yaml:"sasl" default:"false"`
 	Username string   `yaml:"username"`
 	Password string   `yaml:"password"`
-}
-
-type HTTPConfig struct {
-	Enabled   bool   `yaml:"enabled" default:"true"`
-	URL       string `yaml:"url" default:"http://localhost:8080"`
-	Token     string `yaml:"token"`
-	BatchSize int    `yaml:"batch_size" default:"100"`
 }
 
 type ElasticConfig struct {
@@ -44,19 +61,9 @@ type ElasticConfig struct {
 	Index    string `yaml:"index" default:"siem-logs-%{+yyyy.MM.dd}"`
 }
 
-type Config struct {
-	HostID    string          `yaml:"host_id"`
-	Hostname  string          `yaml:"hostname"`
-	Collector CollectorConfig `yaml:"collector"`
-	Kafka     KafkaConfig     `yaml:"kafka"`
-	HTTP      HTTPConfig      `yaml:"http"`
-	Elastic   ElasticConfig   `yaml:"elastic"`
-	LogLevel  string          `yaml:"log_level" default:"info"`
-}
-
 // Load загружает конфигурацию из файла
 func Load(filename string) (*Config, error) {
-	data, err := ioutil.ReadFile(filename)
+	data, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file: %v", err)
 	}
@@ -66,9 +73,7 @@ func Load(filename string) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse config file: %v", err)
 	}
 
-	// Устанавливаем дефолтные значения
 	config.setDefaults()
-
 	return &config, nil
 }
 
@@ -76,14 +81,15 @@ func Load(filename string) (*Config, error) {
 func LoadFromEnv() (*Config, error) {
 	config := &Config{}
 
-	// Загружаем базовые настройки
+	// Базовые настройки
 	config.HostID = os.Getenv("HOST_ID")
 	config.Hostname = os.Getenv("HOSTNAME")
+	config.LogLevel = getEnv("LOG_LEVEL", "info")
 
 	// Настройки коллектора
 	config.Collector.System = getEnvBool("COLLECTOR_SYSTEM", true)
 	config.Collector.Network = getEnvBool("COLLECTOR_NETWORK", true)
-	config.Collector.Processes = getEnvBool("COLLECTOR_PROCESSES", true)
+	config.Collector.Processes = getEnvBool("COLLECTOR_PROCESSES", false)
 	config.Collector.Security = getEnvBool("COLLECTOR_SECURITY", true)
 	config.Collector.Docker = getEnvBool("COLLECTOR_DOCKER", false)
 
@@ -93,7 +99,25 @@ func LoadFromEnv() (*Config, error) {
 		}
 	}
 
-	// Настройки Kafka
+	// Настройки отправителя
+	if batchSize := os.Getenv("SENDER_BATCH_SIZE"); batchSize != "" {
+		if size, err := strconv.Atoi(batchSize); err == nil {
+			config.Sender.BatchSize = size
+		}
+	}
+
+	if flushInterval := os.Getenv("SENDER_FLUSH_INTERVAL"); flushInterval != "" {
+		if dur, err := time.ParseDuration(flushInterval); err == nil {
+			config.Sender.FlushInterval = dur
+		}
+	}
+
+	// Настройки SIEM (приоритет 1)
+	config.SIEM.Enabled = getEnvBool("SIEM_ENABLED", true)
+	config.SIEM.URL = getEnv("SIEM_URL", "http://localhost:8080")
+	config.SIEM.Token = os.Getenv("SIEM_TOKEN")
+
+	// Настройки Kafka (приоритет 2)
 	config.Kafka.Enabled = getEnvBool("KAFKA_ENABLED", false)
 	if brokers := os.Getenv("KAFKA_BROKERS"); brokers != "" {
 		config.Kafka.Brokers = splitEnv(brokers)
@@ -103,33 +127,19 @@ func LoadFromEnv() (*Config, error) {
 	config.Kafka.Username = os.Getenv("KAFKA_USERNAME")
 	config.Kafka.Password = os.Getenv("KAFKA_PASSWORD")
 
-	// Настройки HTTP
-	config.HTTP.Enabled = getEnvBool("HTTP_ENABLED", true)
-	config.HTTP.URL = getEnv("HTTP_URL", "http://localhost:8080")
-	config.HTTP.Token = os.Getenv("HTTP_TOKEN")
-
-	if batchSize := os.Getenv("HTTP_BATCH_SIZE"); batchSize != "" {
-		if size, err := strconv.Atoi(batchSize); err == nil {
-			config.HTTP.BatchSize = size
-		}
-	}
-
-	// Настройки Elasticsearch
+	// Настройки Elasticsearch (приоритет 3)
 	config.Elastic.Enabled = getEnvBool("ELASTIC_ENABLED", false)
 	config.Elastic.URL = getEnv("ELASTIC_URL", "http://localhost:9200")
 	config.Elastic.Username = os.Getenv("ELASTIC_USERNAME")
 	config.Elastic.Password = os.Getenv("ELASTIC_PASSWORD")
 	config.Elastic.Index = getEnv("ELASTIC_INDEX", "siem-logs-%{+yyyy.MM.dd}")
 
-	config.LogLevel = getEnv("LOG_LEVEL", "info")
-
 	config.setDefaults()
-
 	return config, nil
 }
 
 func (c *Config) setDefaults() {
-	// Если hostname не установлен, получаем из системы
+	// Hostname
 	if c.Hostname == "" {
 		hostname, err := os.Hostname()
 		if err == nil {
@@ -139,24 +149,60 @@ func (c *Config) setDefaults() {
 		}
 	}
 
-	// Если host_id не установлен, генерируем из hostname
+	// Host ID
 	if c.HostID == "" {
 		c.HostID = generateHostID(c.Hostname)
 	}
 
-	// Устанавливаем дефолтный интервал если не задан
+	// Collector defaults
 	if c.Collector.Interval == 0 {
-		c.Collector.Interval = 30 * time.Second
+		c.Collector.Interval = 60 * time.Second
 	}
 
-	// Дефолтный batch size
-	if c.HTTP.BatchSize == 0 {
-		c.HTTP.BatchSize = 100
+	// Sender defaults
+	if c.Sender.BatchSize == 0 {
+		c.Sender.BatchSize = 50
+	}
+	if c.Sender.FlushInterval == 0 {
+		c.Sender.FlushInterval = 10 * time.Second
+	}
+	if c.Sender.RetryCount == 0 {
+		c.Sender.RetryCount = 3
+	}
+	if c.Sender.RetryBackoff == 0 {
+		c.Sender.RetryBackoff = 1 * time.Second
+	}
+
+	// SIEM defaults
+	if c.SIEM.URL == "" {
+		c.SIEM.URL = "http://localhost:8080"
+	}
+
+	// Kafka defaults
+	if c.Kafka.Topic == "" {
+		c.Kafka.Topic = "siem-logs"
+	}
+
+	// Elasticsearch defaults
+	if c.Elastic.URL == "" {
+		c.Elastic.URL = "http://localhost:9200"
+	}
+	if c.Elastic.Index == "" {
+		c.Elastic.Index = "siem-logs-%{+yyyy.MM.dd}"
+	}
+
+	// Log level
+	if c.LogLevel == "" {
+		c.LogLevel = "info"
 	}
 }
 
 func generateHostID(hostname string) string {
-	// Генерация простого ID на основе hostname и времени
+	// Пробуем прочитать machine-id
+	if id, err := os.ReadFile("/etc/machine-id"); err == nil && len(id) > 0 {
+		return strings.TrimSpace(string(id[:32]))
+	}
+	// Fallback
 	return fmt.Sprintf("%s-%d", hostname, time.Now().Unix())
 }
 
@@ -170,7 +216,7 @@ func getEnv(key, defaultValue string) string {
 
 func getEnvBool(key string, defaultValue bool) bool {
 	if value := os.Getenv(key); value != "" {
-		return strings.ToLower(value) == "true"
+		return strings.ToLower(value) == "true" || value == "1"
 	}
 	return defaultValue
 }

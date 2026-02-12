@@ -9,33 +9,34 @@ import (
 	"time"
 
 	"linux-agent/config"
+	"linux-agent/pkg/models"
 )
 
 type ElasticSender struct {
-	client  *http.Client
-	config  *config.ElasticConfig
-	hostID  string
-	baseURL string
+	client   *http.Client
+	config   *config.ElasticConfig
+	hostID   string
+	hostname string
+	baseURL  string
 }
 
-func NewElasticSender(cfg *config.ElasticConfig, hostID string) (*ElasticSender, error) {
+func NewElasticSender(cfg *config.ElasticConfig, hostID, hostname string) (*ElasticSender, error) {
 	client := &http.Client{
 		Timeout: 30 * time.Second,
 		Transport: &http.Transport{
-			MaxIdleConns:        10,
-			MaxIdleConnsPerHost: 10,
-			IdleConnTimeout:     90 * time.Second,
+			MaxIdleConns:    10,
+			IdleConnTimeout: 90 * time.Second,
 		},
 	}
 
-	// Убираем trailing slash
 	baseURL := strings.TrimSuffix(cfg.URL, "/")
 
 	sender := &ElasticSender{
-		client:  client,
-		config:  cfg,
-		hostID:  hostID,
-		baseURL: baseURL,
+		client:   client,
+		config:   cfg,
+		hostID:   hostID,
+		hostname: hostname,
+		baseURL:  baseURL,
 	}
 
 	// Проверяем подключение
@@ -46,62 +47,50 @@ func NewElasticSender(cfg *config.ElasticConfig, hostID string) (*ElasticSender,
 	return sender, nil
 }
 
-func (e *ElasticSender) Send(data interface{}) error {
-	// Определяем индекс
-	indexName := e.getIndexName(data)
-
-	// Маршалим данные
-	/*jsonData, err := json.Marshal(data)
-	if err != nil {
-		return fmt.Errorf("failed to marshal data: %v", err)
-	}*/
-
-	// Создаем документ с метаданными
-	doc := map[string]interface{}{
-		"@timestamp": time.Now().UTC(),
-		"host": map[string]interface{}{
-			"id":   e.hostID,
-			"name": getHostname(data),
-		},
-		"event": map[string]interface{}{
-			"type":   getDataType(data),
-			"module": "linux_agent",
-		},
-		"agent": map[string]interface{}{
-			"id":   e.hostID,
-			"type": "linux",
-		},
-		"data": data,
+func (e *ElasticSender) SendBatch(batch []*models.MetricBatch) error {
+	if len(batch) == 0 {
+		return nil
 	}
 
-	docJSON, err := json.Marshal(doc)
-	if err != nil {
-		return err
-	}
+	for _, metrics := range batch {
+		// Формируем индекс
+		indexName := e.getIndexName()
 
-	// URL для индексации
-	url := fmt.Sprintf("%s/%s/_doc", e.baseURL, indexName)
+		// Создаем документ
+		doc := map[string]interface{}{
+			"@timestamp": time.Now().UTC(),
+			"host": map[string]interface{}{
+				"id":   e.hostID,
+				"name": e.hostname,
+			},
+			"metrics": metrics,
+		}
 
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(docJSON))
-	if err != nil {
-		return err
-	}
+		docJSON, err := json.Marshal(doc)
+		if err != nil {
+			return err
+		}
 
-	req.Header.Set("Content-Type", "application/json")
-	if e.config.Username != "" && e.config.Password != "" {
-		req.SetBasicAuth(e.config.Username, e.config.Password)
-	}
+		url := fmt.Sprintf("%s/%s/_doc", e.baseURL, indexName)
+		req, err := http.NewRequest("POST", url, bytes.NewBuffer(docJSON))
+		if err != nil {
+			return err
+		}
 
-	resp, err := e.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
+		req.Header.Set("Content-Type", "application/json")
+		if e.config.Username != "" && e.config.Password != "" {
+			req.SetBasicAuth(e.config.Username, e.config.Password)
+		}
 
-	if resp.StatusCode >= 400 {
-		var errorResp map[string]interface{}
-		json.NewDecoder(resp.Body).Decode(&errorResp)
-		return fmt.Errorf("Elasticsearch error: %v", errorResp)
+		resp, err := e.client.Do(req)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode >= 400 {
+			return fmt.Errorf("Elasticsearch error: %d", resp.StatusCode)
+		}
 	}
 
 	return nil
@@ -134,14 +123,9 @@ func (e *ElasticSender) checkConnection() error {
 	return nil
 }
 
-func (e *ElasticSender) getIndexName(data interface{}) string {
-	// Определяем тип данных для индекса
-	dataType := getDataType(data)
-
-	// Используем шаблон из конфига или создаем свой
+func (e *ElasticSender) getIndexName() string {
 	if e.config.Index != "" {
 		indexTemplate := e.config.Index
-		// Подставляем дату если есть шаблон
 		if strings.Contains(indexTemplate, "%{") {
 			now := time.Now()
 			indexTemplate = strings.ReplaceAll(indexTemplate, "%{+yyyy.MM.dd}", now.Format("2006.01.02"))
@@ -150,26 +134,5 @@ func (e *ElasticSender) getIndexName(data interface{}) string {
 		}
 		return indexTemplate
 	}
-
-	// Дефолтный индекс
-	return fmt.Sprintf("siem-%s-%s", dataType, time.Now().Format("2006.01.02"))
-}
-
-func getHostname(data interface{}) string {
-	// Извлекаем hostname из данных
-	jsonData, err := json.Marshal(data)
-	if err != nil {
-		return "unknown"
-	}
-
-	var temp map[string]interface{}
-	if err := json.Unmarshal(jsonData, &temp); err != nil {
-		return "unknown"
-	}
-
-	if hostname, ok := temp["hostname"].(string); ok {
-		return hostname
-	}
-
-	return "unknown"
+	return fmt.Sprintf("siem-logs-%s", time.Now().Format("2006.01.02"))
 }

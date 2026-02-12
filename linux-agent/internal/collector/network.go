@@ -92,7 +92,7 @@ func CollectNetworkInfo(hostID, hostname string) (*NetworkInfo, error) {
 		Type:      "network_info",
 	}
 
-	// 1. Сетевые интерфейсы
+	// Сетевые интерфейсы
 	interfaces, _ := net.Interfaces()
 	for _, iface := range interfaces {
 		addrs, err := iface.Addrs()
@@ -135,7 +135,7 @@ func CollectNetworkInfo(hostID, hostname string) (*NetworkInfo, error) {
 		})
 	}
 
-	// 2. Активные соединения через gopsutil
+	// Активные соединения через gopsutil
 	conns, _ := gopsnet.Connections("all")
 	for _, conn := range conns {
 		info.Connections = append(info.Connections, ConnectionInfo{
@@ -149,10 +149,10 @@ func CollectNetworkInfo(hostID, hostname string) (*NetworkInfo, error) {
 		})
 	}
 
-	// 3. Слушающие порты
+	// Слушающие порты
 	info.collectListeningPorts()
 
-	// 4. Статистика сети через gopsutil
+	// Статистика сети через gopsutil
 	stats, _ := gopsnet.IOCounters(true)
 	for _, stat := range stats {
 		info.Bandwidth.BytesSent += stat.BytesSent
@@ -165,10 +165,10 @@ func CollectNetworkInfo(hostID, hostname string) (*NetworkInfo, error) {
 		info.Bandwidth.DropsOut += stat.Dropout
 	}
 
-	// 5. Firewall rules
+	// Firewall rules
 	info.collectFirewallInfo()
 
-	// 6. DNS информация
+	// DNS информация
 	info.collectDNSInfo()
 
 	return info, nil

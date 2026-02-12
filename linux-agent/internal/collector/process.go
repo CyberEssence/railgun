@@ -12,7 +12,7 @@ type ProcessInfo struct {
 	Timestamp time.Time `json:"timestamp"`
 	HostID    string    `json:"host_id"`
 	Hostname  string    `json:"hostname"`
-	Type      string    `json:"type"` // "process_info"
+	Type      string    `json:"type"`
 
 	Processes   []ProcessDetail `json:"processes"`
 	TotalCount  int             `json:"total_count"`
