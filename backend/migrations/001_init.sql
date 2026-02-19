@@ -15,9 +15,9 @@ CREATE TABLE IF NOT EXISTS users (
     last_login TIMESTAMP WITH TIME ZONE,
     
     -- 2FA
-    twofa_enabled BOOLEAN DEFAULT false,
-    twofa_secret VARCHAR(255),
-    twofa_backup_codes TEXT[]
+    totp_enabled BOOLEAN DEFAULT false,
+    totp_secret VARCHAR(255),
+    totp_backup_codes TEXT[]
 );
 
 -- Индексы для users (отдельные команды)

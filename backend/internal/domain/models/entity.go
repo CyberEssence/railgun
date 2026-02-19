@@ -135,14 +135,14 @@ func (w *WindowsArtifact) ToWindowsArtifactDTO() dto.WindowsArtifactDTO {
 type User struct {
 	bun.BaseModel `bun:"table:users"`
 
-	ID           int64  `bun:"id,pk,autoincrement"`
+	ID           string `json:"id" bun:"id,pk,type:uuid,default:gen_random_uuid()"`
 	Username     string `bun:"username,unique,notnull"`
 	Email        string `bun:"email,unique,notnull"`
 	PasswordHash string `bun:"password_hash,notnull" json:"-"`
 
-	TOTPSecret      string `bun:"totp_secret"`
-	TOTPEnabled     bool   `bun:"totp_enabled,default:false"`
-	TOTPBackupCodes string `bun:"totp_backup_codes"` // Просто string без type:jsonb
+	TOTPSecret      string   `bun:"totp_secret"`
+	TOTPEnabled     bool     `bun:"totp_enabled,default:false"`
+	TOTPBackupCodes []string `json:"-" bun:"totp_backup_codes,type:jsonb"`
 
 	CreatedAt time.Time `bun:"created_at,default:current_timestamp"`
 	UpdatedAt time.Time `bun:"updated_at,default:current_timestamp"`
@@ -155,7 +155,7 @@ type TwoFAToken struct {
 	bun.BaseModel `bun:"table:two_fa_tokens,alias:t"`
 
 	ID        int64     `bun:"id,pk,autoincrement" json:"id"`
-	UserID    int64     `bun:"user_id,notnull" json:"user_id"`
+	UserID    string    `bun:"user_id,notnull" json:"user_id"`
 	TokenHash string    `bun:"token_hash,notnull" json:"-"`
 	ExpiresAt time.Time `bun:"expires_at,notnull" json:"expires_at"`
 	Used      bool      `bun:"used,notnull,default:false" json:"used"`

@@ -40,16 +40,17 @@ type ArtifactRepository interface {
 
 // UserRepository интерфейс для работы с пользователями
 type UserRepository interface {
-	GetUserByID(ctx context.Context, id int64) (*models.User, error)
+	GetUserByID(ctx context.Context, id string) (*models.User, error)
 	GetUserByUsername(ctx context.Context, username string) (*models.User, error)
-	CreateUser(ctx context.Context, user models.User) error
+	GetUserByEmail(ctx context.Context, email string) (*models.User, error)
+	CreateUser(ctx context.Context, user *models.User) error
 	UpdateUser(ctx context.Context, user *models.User) error
-	SaveTwoFAToken(ctx context.Context, token models.TwoFAToken) error
-	GetTwoFAToken(ctx context.Context, tokenHash string, userID int64) (*models.TwoFAToken, error)
+	SaveTwoFAToken(ctx context.Context, token *models.TwoFAToken) error
+	GetTwoFAToken(ctx context.Context, tokenHash string, userID string) (*models.TwoFAToken, error)
 	MarkTokenAsUsed(ctx context.Context, tokenID int64) error
-	GetTOTPSecret(ctx context.Context, userID int64) (string, error)
-	Enable2FA(ctx context.Context, userID int64, secret string, backupCodes []string) error
-	Disable2FA(ctx context.Context, userID int64) error
+	GetTOTPSecret(ctx context.Context, userID string) (string, error)
+	Enable2FA(ctx context.Context, userID string, secret string, backupCodes []string) error
+	Disable2FA(ctx context.Context, userID string) error
 }
 
 type AIService interface {
@@ -70,13 +71,13 @@ type IntegrationService interface {
 
 // TwoFAService интерфейс для работы с двухфакторной аутентификацией
 type TwoFAService interface {
-	GenerateToken(ctx context.Context, userID int64) (string, error)
-	Validate2FAToken(ctx context.Context, token string, userID int64) (bool, error)
-	Enable2FA(ctx context.Context, userID int64, username string) (map[string]interface{}, error)
-	Disable2FA(ctx context.Context, userID int64) error
-	GenerateNewBackupCodes(ctx context.Context, userID int64) ([]string, error)
-	VerifySetup(ctx context.Context, token string, userID int64) (bool, error)
-	ValidateTOTPToken(ctx context.Context, token string, userID int64) (bool, error)
+	GenerateToken(ctx context.Context, userID string) (string, error)
+	Validate2FAToken(ctx context.Context, token string, userID string) (bool, error)
+	Enable2FA(ctx context.Context, userID string, username string) (map[string]interface{}, error)
+	Disable2FA(ctx context.Context, userID string) error
+	GenerateNewBackupCodes(ctx context.Context, userID string) ([]string, error)
+	VerifySetup(ctx context.Context, token string, userID string) (bool, error)
+	ValidateTOTPToken(ctx context.Context, token string, userID string) (bool, error)
 }
 
 type DetectionEngine interface {

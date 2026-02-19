@@ -8,7 +8,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -43,7 +42,7 @@ func NewTwoFAService(userRepo domain.UserRepository, cfg *config.Config) *TwoFAS
 }
 
 // internal/infrastructure/services/twofa_service.go
-func (s *TwoFAService) GenerateToken(ctx context.Context, userID int64) (string, error) {
+func (s *TwoFAService) GenerateToken(ctx context.Context, userID string) (string, error) {
 	// Проверка существования пользователя
 	_, err := s.userRepo.GetUserByID(ctx, userID)
 	if err != nil {
@@ -72,7 +71,7 @@ func (s *TwoFAService) GenerateToken(ctx context.Context, userID int64) (string,
 	}
 
 	// Сохраняем токен в БД
-	err = s.userRepo.SaveTwoFAToken(ctx, twoFAToken)
+	err = s.userRepo.SaveTwoFAToken(ctx, &twoFAToken)
 	if err != nil {
 		return "", fmt.Errorf("failed to save token: %w", err)
 	}
@@ -81,7 +80,7 @@ func (s *TwoFAService) GenerateToken(ctx context.Context, userID int64) (string,
 }
 
 // VerifySetup проверяет первый код для подтверждения настройки
-func (s *TwoFAService) VerifySetup(ctx context.Context, token string, userID int64) (bool, error) {
+func (s *TwoFAService) VerifySetup(ctx context.Context, token string, userID string) (bool, error) {
 	user, err := s.userRepo.GetUserByID(ctx, userID)
 	if err != nil {
 		return false, err
@@ -113,7 +112,7 @@ func (s *TwoFAService) VerifySetup(ctx context.Context, token string, userID int
 	return valid, err
 }
 
-func (s *TwoFAService) Validate2FAToken(ctx context.Context, token string, userID int64) (bool, error) {
+func (s *TwoFAService) Validate2FAToken(ctx context.Context, token string, userID string) (bool, error) {
 	// Вычисляем хеш токена
 	tokenHash := s.hashToken(token)
 
@@ -157,8 +156,8 @@ type TwoFAConfig struct {
 }
 
 // Enable2FA включает 2FA для пользователя
-func (s *TwoFAService) Enable2FA(ctx context.Context, userID int64, username string) (map[string]interface{}, error) {
-	log.Printf("Enabling 2FA for user %d (%s)", userID, username)
+func (s *TwoFAService) Enable2FA(ctx context.Context, userID string, username string) (map[string]interface{}, error) {
+	log.Printf("Enabling 2FA for user %s (%s)", userID, username)
 
 	// Используйте правильного issuer
 	issuer := s.config.JWTConfig.Issuer
@@ -182,7 +181,7 @@ func (s *TwoFAService) Enable2FA(ctx context.Context, userID int64, username str
 	}
 
 	secret := key.Secret()
-	log.Printf("Generated TOTP secret for user %d", userID)
+	log.Printf("Generated TOTP secret for user %s", userID)
 
 	// 2. Шифрование секрета
 	encryptedSecret, err := s.encryptSecret(secret)
@@ -216,7 +215,7 @@ func (s *TwoFAService) Enable2FA(ctx context.Context, userID int64, username str
 }
 
 // Validate2FAToken проверяет TOTP код
-func (s *TwoFAService) ValidateTOTPToken(ctx context.Context, token string, userID int64) (bool, error) {
+func (s *TwoFAService) ValidateTOTPToken(ctx context.Context, token string, userID string) (bool, error) {
 	// 1. Получаем пользователя
 	user, err := s.userRepo.GetUserByID(ctx, userID)
 	if err != nil {
@@ -238,7 +237,7 @@ func (s *TwoFAService) ValidateTOTPToken(ctx context.Context, token string, user
 	valid := totp.Validate(token, decryptedSecret)
 
 	// 5. Если TOTP не прошел, проверяем резервные коды
-	if !valid && user.TOTPBackupCodes != "" {
+	if !valid && len(user.TOTPBackupCodes) > 0 {
 		if s.validateBackupCode(user.TOTPBackupCodes, token) {
 			valid = true
 			// Удаляем использованный резервный код
@@ -250,30 +249,36 @@ func (s *TwoFAService) ValidateTOTPToken(ctx context.Context, token string, user
 }
 
 // Disable2FA отключает 2FA для пользователя
-func (s *TwoFAService) Disable2FA(ctx context.Context, userID int64) error {
+func (s *TwoFAService) Disable2FA(ctx context.Context, userID string) error {
 	return s.userRepo.Disable2FA(ctx, userID)
 }
 
 // GenerateNewBackupCodes генерирует новые резервные коды
-func (s *TwoFAService) GenerateNewBackupCodes(ctx context.Context, userID int64) ([]string, error) {
-	backupCodes := s.generateBackupCodes(10)
-
-	// Преобразуем в JSON
-	backupCodesJSON, err := json.Marshal(backupCodes)
-	if err != nil {
-		return nil, err
-	}
-
-	// Обновляем в БД
+func (s *TwoFAService) GenerateNewBackupCodes(ctx context.Context, userID string) ([]string, error) {
+	// Получаем пользователя
 	user, err := s.userRepo.GetUserByID(ctx, userID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+	if user == nil {
+		return nil, fmt.Errorf("user not found")
 	}
 
-	user.TOTPBackupCodes = string(backupCodesJSON)
-	err = s.userRepo.UpdateUser(ctx, user)
+	if !user.TOTPEnabled {
+		return nil, fmt.Errorf("2FA is not enabled for this user")
+	}
 
-	return backupCodes, err
+	// Генерируем новые резервные коды (по умолчанию 8, но можно передавать параметр)
+	backupCodes := s.generateBackupCodes(8)
+	// Обновляем в БД - напрямую присваиваем []string
+	user.TOTPBackupCodes = backupCodes
+
+	err = s.userRepo.UpdateUser(ctx, user)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update user: %w", err)
+	}
+
+	return backupCodes, nil
 }
 
 // generateBackupCodes генерирует резервные коды
@@ -317,36 +322,29 @@ func (s *TwoFAService) generateQRCode(key *otp.Key) (string, error) {
 }
 
 // validateBackupCode проверяет резервный код
-func (s *TwoFAService) validateBackupCode(backupCodesJSON, code string) bool {
-	var backupCodes []string
-	err := json.Unmarshal([]byte(backupCodesJSON), &backupCodes)
-	if err != nil {
-		return false
-	}
-
+func (s *TwoFAService) validateBackupCode(backupCodes []string, code string) bool {
 	for _, backupCode := range backupCodes {
 		if backupCode == code {
 			return true
 		}
 	}
-
 	return false
 }
 
 // removeUsedBackupCode удаляет использованный резервный код
-func (s *TwoFAService) removeUsedBackupCode(ctx context.Context, userID int64, usedCode string) {
+func (s *TwoFAService) removeUsedBackupCode(ctx context.Context, userID string, usedCode string) {
 	user, err := s.userRepo.GetUserByID(ctx, userID)
 	if err != nil {
 		log.Printf("Failed to get user for backup code removal: %v", err)
 		return
 	}
-
-	var backupCodes []string
-	err = json.Unmarshal([]byte(user.TOTPBackupCodes), &backupCodes)
-	if err != nil {
-		log.Printf("Failed to unmarshal backup codes: %v", err)
+	if user == nil {
+		log.Printf("User not found for backup code removal")
 		return
 	}
+
+	// TOTPBackupCodes уже должен быть []string, просто используем его
+	backupCodes := user.TOTPBackupCodes
 
 	// Удаляем использованный код
 	newBackupCodes := []string{}
@@ -356,14 +354,9 @@ func (s *TwoFAService) removeUsedBackupCode(ctx context.Context, userID int64, u
 		}
 	}
 
-	// Сохраняем обновленный список
-	newBackupCodesJSON, err := json.Marshal(newBackupCodes)
-	if err != nil {
-		log.Printf("Failed to marshal new backup codes: %v", err)
-		return
-	}
+	// Сохраняем обновленный список (присваиваем напрямую)
+	user.TOTPBackupCodes = newBackupCodes
 
-	user.TOTPBackupCodes = string(newBackupCodesJSON)
 	err = s.userRepo.UpdateUser(ctx, user)
 	if err != nil {
 		log.Printf("Failed to update user backup codes: %v", err)

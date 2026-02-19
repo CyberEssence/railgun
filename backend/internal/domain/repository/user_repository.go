@@ -3,7 +3,6 @@ package persistence
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -25,78 +24,90 @@ func NewUserRepository(db *bun.DB) *UserRepository {
 	}
 }
 
-func (r *UserRepository) GetUserByID(ctx context.Context, id int64) (*models.User, error) {
-	user := new(models.User)
+// GetUserByID получает пользователя по ID (UUID)
+func (r *UserRepository) GetUserByID(ctx context.Context, id string) (*models.User, error) {
+	var user models.User
 	err := r.db.NewSelect().
-		Model(user).
+		Model(&user).
 		Where("id = ?", id).
 		Scan(ctx)
 
 	if err != nil {
-		return nil, err
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get user by ID: %w", err)
 	}
 
-	return user, nil
+	return &user, nil
 }
 
+// GetUserByUsername получает пользователя по username
 func (r *UserRepository) GetUserByUsername(ctx context.Context, username string) (*models.User, error) {
-	user := new(models.User)
+	var user models.User
 	err := r.db.NewSelect().
-		Model(user).
+		Model(&user).
 		Where("username = ?", username).
 		Scan(ctx)
 
 	if err != nil {
-		return nil, err
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get user by username: %w", err)
 	}
 
-	return user, nil
+	return &user, nil
 }
 
-func (r *UserRepository) CreateUser(ctx context.Context, user models.User) error {
-	// Check if user with this email already exists
-	var existingUser models.User
-	err := r.db.NewSelect().Model(&existingUser).
-		Where("email = ?", user.Email).
-		Limit(1).
+// GetUserByEmail получает пользователя по email
+func (r *UserRepository) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
+	var user models.User
+	err := r.db.NewSelect().
+		Model(&user).
+		Where("email = ?", email).
 		Scan(ctx)
 
-	if err == nil {
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get user by email: %w", err)
+	}
+	return &user, nil
+}
+
+// CreateUser создает нового пользователя
+func (r *UserRepository) CreateUser(ctx context.Context, user *models.User) error {
+	// Проверяем существование пользователя с таким email
+	existingUser, err := r.GetUserByEmail(ctx, user.Email)
+	if err != nil {
+		return fmt.Errorf("failed to check email: %w", err)
+	}
+	if existingUser != nil {
 		return fmt.Errorf("user with this email already exists")
-	} else if !errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("failed to check for existing user: %w", err)
 	}
 
-	// Check if user with this username already exists
-	err = r.db.NewSelect().Model(&existingUser).
-		Where("username = ?", user.Username).
-		Limit(1).
-		Scan(ctx)
-
-	if err == nil {
+	// Проверяем существование пользователя с таким username
+	existingUser, err = r.GetUserByUsername(ctx, user.Username)
+	if err != nil {
+		return fmt.Errorf("failed to check username: %w", err)
+	}
+	if existingUser != nil {
 		return fmt.Errorf("user with this username already exists")
-	} else if !errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("failed to check for existing user: %w", err)
 	}
 
+	// Хешируем пароль
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.PasswordHash), bcrypt.DefaultCost)
 	if err != nil {
 		return fmt.Errorf("failed to hash password: %w", err)
 	}
 	user.PasswordHash = string(hashedPassword)
 
-	// Устанавливаем значения по умолчанию для 2FA полей
-	if user.TOTPSecret == "" {
-		user.TOTPSecret = ""
+	// Устанавливаем значения по умолчанию
+	if user.TOTPBackupCodes == nil {
+		user.TOTPBackupCodes = []string{} // Пустой слайс, а не строка "[]"
 	}
-	if !user.TOTPEnabled {
-		user.TOTPEnabled = false
-	}
-	if user.TOTPBackupCodes == "" {
-		// Правильное значение JSONB для PostgreSQL
-		user.TOTPBackupCodes = "[]"
-	}
-
 	if user.CreatedAt.IsZero() {
 		user.CreatedAt = time.Now()
 	}
@@ -104,10 +115,15 @@ func (r *UserRepository) CreateUser(ctx context.Context, user models.User) error
 		user.UpdatedAt = time.Now()
 	}
 
-	_, err = r.db.NewInsert().Model(&user).Exec(ctx)
+	// Вставляем пользователя
+	_, err = r.db.NewInsert().
+		Model(user).
+		Exec(ctx)
+
 	return err
 }
 
+// UpdateUser обновляет данные пользователя
 func (r *UserRepository) UpdateUser(ctx context.Context, user *models.User) error {
 	// Если пароль изменился, хешируем его
 	if len(user.PasswordHash) > 0 && !isHashedPassword(user.PasswordHash) {
@@ -118,17 +134,23 @@ func (r *UserRepository) UpdateUser(ctx context.Context, user *models.User) erro
 		user.PasswordHash = string(hashedPassword)
 	}
 
+	user.UpdatedAt = time.Now()
+
 	_, err := r.db.NewUpdate().
-		Model(&user).
+		Model(user).
 		Where("id = ?", user.ID).
 		Exec(ctx)
 
 	return err
 }
 
+// ValidateCredentials проверяет учетные данные пользователя
 func (r *UserRepository) ValidateCredentials(ctx context.Context, username, password string) (*models.User, error) {
 	user, err := r.GetUserByUsername(ctx, username)
 	if err != nil {
+		return nil, fmt.Errorf("invalid credentials")
+	}
+	if user == nil {
 		return nil, fmt.Errorf("invalid credentials")
 	}
 
@@ -139,7 +161,8 @@ func (r *UserRepository) ValidateCredentials(ctx context.Context, username, pass
 	}
 
 	// Обновляем время последнего входа
-	user.LastLogin = time.Now()
+	now := time.Now()
+	user.LastLogin = now
 	_, err = r.db.NewUpdate().
 		Model(user).
 		Set("last_login = ?", user.LastLogin).
@@ -153,84 +176,87 @@ func (r *UserRepository) ValidateCredentials(ctx context.Context, username, pass
 	return user, nil
 }
 
-func (r *UserRepository) SaveTwoFAToken(ctx context.Context, token models.TwoFAToken) error {
+// SaveTwoFAToken сохраняет 2FA токен
+func (r *UserRepository) SaveTwoFAToken(ctx context.Context, token *models.TwoFAToken) error {
 	// Проверяем существование таблицы
 	_, err := r.db.NewCreateTable().
 		Model((*models.TwoFAToken)(nil)).
 		IfNotExists().
+		ForeignKey(`(user_id) REFERENCES users(id) ON DELETE CASCADE`).
 		Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to ensure table exists: %w", err)
 	}
 
 	// Сохраняем токен
-	_, err = r.db.NewInsert().Model(&token).Exec(ctx)
+	_, err = r.db.NewInsert().Model(token).Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to insert token: %w", err)
 	}
 	return nil
 }
 
-func (r *UserRepository) GetTwoFAToken(ctx context.Context, tokenHash string, userID int64) (*models.TwoFAToken, error) {
-	token := new(models.TwoFAToken)
+// GetTwoFAToken получает 2FA токен
+func (r *UserRepository) GetTwoFAToken(ctx context.Context, tokenHash string, userID string) (*models.TwoFAToken, error) {
+	var token models.TwoFAToken
 	err := r.db.NewSelect().
-		Model(token).
+		Model(&token).
 		Where("token_hash = ?", tokenHash).
 		Where("user_id = ?", userID).
-		Where("used = false").
+		Where("used = ?", false).
 		Where("expires_at > ?", time.Now()).
 		Scan(ctx)
 
 	if err != nil {
-		// Добавьте логирование для отладки
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
 		log.Printf("Error querying token: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to get token: %w", err)
 	}
 
-	return token, nil
+	return &token, nil
 }
 
+// MarkTokenAsUsed отмечает токен как использованный
 func (r *UserRepository) MarkTokenAsUsed(ctx context.Context, tokenID int64) error {
-	// Исправлено: используем правильную модель
 	_, err := r.db.NewUpdate().
-		Model((*models.TwoFAToken)(nil)). // Используем правильную модель
-		Set("used = true").
+		Model((*models.TwoFAToken)(nil)).
+		Set("used = ?", true).
 		Where("id = ?", tokenID).
 		Exec(ctx)
 
 	return err
 }
 
-func (r *UserRepository) Enable2FA(ctx context.Context, userID int64, secret string, backupCodes []string) error {
-	backupCodesJSON, err := json.Marshal(backupCodes)
-	if err != nil {
-		return err
-	}
-
-	_, err = r.db.NewUpdate().
-		Model(&models.User{}).
+// Enable2FA включает 2FA для пользователя
+func (r *UserRepository) Enable2FA(ctx context.Context, userID string, secret string, backupCodes []string) error {
+	_, err := r.db.NewUpdate().
+		Model((*models.User)(nil)).
 		Set("totp_secret = ?", secret).
 		Set("totp_enabled = ?", true).
-		Set("totp_backup_codes = ?", string(backupCodesJSON)).
+		Set("totp_backup_codes = ?", backupCodes). // Bun автоматически сериализует в JSON
 		Where("id = ?", userID).
 		Exec(ctx)
 
 	return err
 }
 
-func (r *UserRepository) Disable2FA(ctx context.Context, userID int64) error {
+// Disable2FA отключает 2FA для пользователя
+func (r *UserRepository) Disable2FA(ctx context.Context, userID string) error {
 	_, err := r.db.NewUpdate().
-		Model(&models.User{}).
+		Model((*models.User)(nil)).
 		Set("totp_secret = ?", "").
 		Set("totp_enabled = ?", false).
-		Set("totp_backup_codes = ?", "[]").
+		Set("totp_backup_codes = ?", []string{}). // Пустой массив
 		Where("id = ?", userID).
 		Exec(ctx)
 
 	return err
 }
 
-func (r *UserRepository) GetTOTPSecret(ctx context.Context, userID int64) (string, error) {
+// GetTOTPSecret получает TOTP секрет пользователя
+func (r *UserRepository) GetTOTPSecret(ctx context.Context, userID string) (string, error) {
 	var user models.User
 	err := r.db.NewSelect().
 		Model(&user).
@@ -239,7 +265,10 @@ func (r *UserRepository) GetTOTPSecret(ctx context.Context, userID int64) (strin
 		Scan(ctx)
 
 	if err != nil {
-		return "", err
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", nil
+		}
+		return "", fmt.Errorf("failed to get TOTP secret: %w", err)
 	}
 
 	return user.TOTPSecret, nil
