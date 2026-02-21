@@ -112,7 +112,7 @@ func (h *AuthHandler) Verify2FA(c *gin.Context) {
 		return
 	}
 
-	log.Printf("Verifying TOTP code for user %d", req.UserID)
+	log.Printf("Verifying TOTP code for user %s", req.UserID)
 
 	valid, err := h.twoFAService.ValidateTOTPToken(c.Request.Context(), req.Token, req.UserID)
 	if err != nil || !valid {
@@ -124,7 +124,7 @@ func (h *AuthHandler) Verify2FA(c *gin.Context) {
 		return
 	}
 
-	log.Printf("TOTP validation successful for user %d", req.UserID)
+	log.Printf("TOTP validation successful for user %s", req.UserID)
 
 	// Генерация JWT токенов
 	accessToken, refreshToken, expiresIn, err := h.generateTokens(req.UserID)
@@ -175,7 +175,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	}
 
 	// Создание нового пользователя
-	newUser := models.User{
+	newUser := &models.User{
 		Username:     req.Username,
 		Email:        req.Email,
 		PasswordHash: req.Password, // UserRepository выполнит хеширование
@@ -233,14 +233,14 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 		return
 	}
 
-	userID, ok := claims["user_id"].(float64)
+	userID, ok := claims["user_id"].(string)
 	if !ok {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID in token"})
 		return
 	}
 
 	// Генерируем новые токены
-	accessToken, refreshToken, expiresIn, err := h.generateTokens(int64(userID))
+	accessToken, refreshToken, expiresIn, err := h.generateTokens(userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate tokens"})
 		return
@@ -289,20 +289,31 @@ func (h *AuthHandler) AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		userID, ok := claims["user_id"].(float64)
-		if !ok {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID in token"})
+		// Исправление: проверяем тип user_id и конвертируем в строку
+		var userID string
+		// Позже удалить switch
+		switch v := claims["user_id"].(type) {
+		case string:
+			// Если в токене строка (UUID)
+			userID = v
+		case float64:
+			// Если в токене число
+			userID = fmt.Sprintf("%d", int64(v))
+		default:
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+				"error": fmt.Sprintf("Invalid user ID type in token: %T", claims["user_id"]),
+			})
 			return
 		}
 
-		// Сохраняем ID пользователя в контексте
-		c.Set("user_id", int64(userID))
+		// Сохраняем ID пользователя в контексте как строку
+		c.Set("user_id", userID)
 		c.Next()
 	}
 }
 
 // generateTokens генерирует JWT токены
-func (h *AuthHandler) generateTokens(userID int64) (string, string, int, error) {
+func (h *AuthHandler) generateTokens(userID string) (string, string, int, error) {
 	// Создаем access token
 	accessTokenTTL := time.Duration(h.config.Auth.TokenTTL) * time.Second
 	accessTokenClaims := jwt.MapClaims{
@@ -347,7 +358,7 @@ func (h *AuthHandler) generateTokens(userID int64) (string, string, int, error) 
 // @Failure      401  {object}  map[string]string "Пользователь не авторизован"
 // @Router       /api/auth/2fa/enable [post]
 func (h *AuthHandler) Enable2FA(c *gin.Context) {
-	userID := c.GetInt64("user_id")
+	userID := c.GetString("user_id")
 
 	user, err := h.userRepo.GetUserByID(c.Request.Context(), userID)
 	if err != nil {
@@ -380,28 +391,45 @@ func (h *AuthHandler) Enable2FA(c *gin.Context) {
 // @Router       /api/auth/2fa/verify-setup [post]
 func (h *AuthHandler) Verify2FASetup(c *gin.Context) {
 	var req struct {
-		Token string `json:"token" binding:"required"`
+		UserID string `json:"user_id" binding:"required"`
+		Token  string `json:"token" binding:"required"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Token required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	userID := c.GetInt64("user_id")
-	valid, err := h.twoFAService.VerifySetup(c.Request.Context(), req.Token, userID)
-
+	// Проверяем 2FA токен
+	valid, err := h.twoFAService.ValidateTOTPToken(c.Request.Context(), req.Token, req.UserID)
 	if err != nil || !valid {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Invalid verification code",
-			"message": "Please check the code from your authenticator app",
-		})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid 2FA code"})
+		return
+	}
+
+	// Получаем данные пользователя из БД
+	user, err := h.userRepo.GetUserByID(c.Request.Context(), req.UserID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get user data"})
+		return
+	}
+
+	// Генерируем токены
+	accessToken, refreshToken, expiresIn, err := h.generateTokens(req.UserID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate tokens"})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"status":  "success",
-		"message": "2FA has been successfully enabled",
+		"access_token":  accessToken,
+		"refresh_token": refreshToken,
+		"expires_in":    expiresIn,
+		"token_type":    "Bearer",
+		"user_id":       user.ID,
+		"username":      user.Username, // Добавляем username
+		"email":         user.Email,    // Добавляем email
+		"totp_enabled":  user.TOTPEnabled,
 	})
 }
 
@@ -420,7 +448,7 @@ func (h *AuthHandler) Get2FAStatus(c *gin.Context) {
 		return
 	}
 
-	userID := userIDValue.(int64)
+	userID := userIDValue.(string)
 	user, err := h.userRepo.GetUserByID(c.Request.Context(), userID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
@@ -452,7 +480,7 @@ func (h *AuthHandler) Disable2FA(c *gin.Context) {
 		return
 	}
 
-	userID := userIDValue.(int64)
+	userID := userIDValue.(string)
 
 	var req struct {
 		Password string `json:"password" binding:"required"`
@@ -489,7 +517,7 @@ func (h *AuthHandler) Disable2FA(c *gin.Context) {
 }
 
 func (h *AuthHandler) GenerateNewBackupCodes(c *gin.Context) {
-	userID := c.GetInt64("user_id")
+	userID := c.GetString("user_id")
 
 	backupCodes, err := h.twoFAService.GenerateNewBackupCodes(c.Request.Context(), userID)
 	if err != nil {

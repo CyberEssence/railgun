@@ -125,7 +125,7 @@ func (h *ArtifactHandler) SaveArtifact(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "Artifact saved successfully",
-		"id":      artifact.ID,
+		"id":      artifact.UUID,
 	})
 }
 

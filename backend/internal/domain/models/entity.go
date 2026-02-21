@@ -99,7 +99,7 @@ type NetworkTraffic struct {
 type WindowsArtifact struct {
 	bun.BaseModel `bun:"table:windows_artifacts,alias:wa"`
 
-	ID          int64                  `bun:"id,pk,autoincrement" json:"id"`
+	UUID        string                 `bun:"id,pk,autoincrement" json:"id"`
 	HostID      string                 `bun:"host_id,notnull" json:"host_id"`
 	Timestamp   time.Time              `bun:"timestamp,notnull" json:"timestamp"`
 	Type        string                 `bun:"type,notnull" json:"type"`
@@ -116,7 +116,7 @@ type WindowsArtifact struct {
 // ToWindowsArtifactDTO() преобразует модель в DTO для API
 func (w *WindowsArtifact) ToWindowsArtifactDTO() dto.WindowsArtifactDTO {
 	return dto.WindowsArtifactDTO{
-		ID:          w.ID,
+		UUID:        w.UUID,
 		HostID:      w.HostID,
 		Timestamp:   w.Timestamp,
 		Type:        w.Type,
@@ -131,22 +131,22 @@ func (w *WindowsArtifact) ToWindowsArtifactDTO() dto.WindowsArtifactDTO {
 	}
 }
 
-// User представляет пользователя системы
 type User struct {
-	bun.BaseModel `bun:"table:users"`
+	bun.BaseModel `bun:"table:users,alias:u"`
 
-	ID           int64  `bun:"id,pk,autoincrement"`
+	ID           string `bun:"id,pk,type:uuid,default:uuid_generate_v4()"`
 	Username     string `bun:"username,unique,notnull"`
 	Email        string `bun:"email,unique,notnull"`
-	PasswordHash string `bun:"password_hash,notnull" json:"-"`
+	PasswordHash string `bun:"password_hash,notnull"`
 
-	TOTPSecret      string `bun:"totp_secret"`
-	TOTPEnabled     bool   `bun:"totp_enabled,default:false"`
-	TOTPBackupCodes string `bun:"totp_backup_codes"` // Просто string без type:jsonb
+	TOTPSecret  string `bun:"totp_secret"`
+	TOTPEnabled bool   `bun:"totp_enabled,default:false"`
 
-	CreatedAt time.Time `bun:"created_at,default:current_timestamp"`
-	UpdatedAt time.Time `bun:"updated_at,default:current_timestamp"`
+	TOTPBackupCodes string `bun:"totp_backup_codes,type:jsonb"`
+
 	IsActive  bool      `bun:"is_active,default:true"`
+	CreatedAt time.Time `bun:"created_at,nullzero,notnull,default:current_timestamp"`
+	UpdatedAt time.Time `bun:"updated_at,nullzero,notnull,default:current_timestamp"`
 	LastLogin time.Time `bun:"last_login"`
 }
 
@@ -155,7 +155,7 @@ type TwoFAToken struct {
 	bun.BaseModel `bun:"table:two_fa_tokens,alias:t"`
 
 	ID        int64     `bun:"id,pk,autoincrement" json:"id"`
-	UserID    int64     `bun:"user_id,notnull" json:"user_id"`
+	UserID    string    `bun:"user_id,notnull" json:"user_id"`
 	TokenHash string    `bun:"token_hash,notnull" json:"-"`
 	ExpiresAt time.Time `bun:"expires_at,notnull" json:"expires_at"`
 	Used      bool      `bun:"used,notnull,default:false" json:"used"`
@@ -332,7 +332,7 @@ type AnalysisResult struct {
 }
 
 type Artifact struct {
-	ID          int64     `json:"id"`
+	UUID        string    `json:"id"`
 	HostID      string    `json:"host_id"`
 	Type        string    `json:"type"` // file, registry, process и т.д.
 	Name        string    `json:"name"`

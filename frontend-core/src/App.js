@@ -17,6 +17,7 @@ import { PrivateRoute } from './components/PrivateRoute';
 import { FileScanner } from './pages/FileScanner';
 import { Box } from '@mui/material';
 import { TwoFASettings } from './components/TwoFASettings';
+import { Profile } from './pages/Profile';
 
 const theme = createTheme({
   palette: {
@@ -52,6 +53,7 @@ function App() {
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
               <Route path="/test-2fa" element={<Test2FA />} />
+              <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
               <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
               <Route path="/traffic" element={<PrivateRoute><TrafficMonitor /></PrivateRoute>} />
               <Route path="/artifacts" element={<PrivateRoute><ArtifactExplorer /></PrivateRoute>} />

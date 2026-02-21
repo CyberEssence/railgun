@@ -24,7 +24,7 @@ import { useNavigate } from 'react-router-dom';
 
 export const ArtifactExplorer = () => {
   const api = useApi(); 
-  const { isAuthenticated, logout, token } = useAuth();
+  const { isAuthenticated, logout, user } = useAuth();
   const navigate = useNavigate();
   const [artifacts, setArtifacts] = useState([]);
   const [pagination, setPagination] = useState({
@@ -45,6 +45,18 @@ export const ArtifactExplorer = () => {
     { value: 'process', label: 'Process' }
   ];
 
+  // Получаем токен из user
+  const token = user?.token;
+
+  useEffect(() => {
+    console.log('Auth state:', { 
+      isAuthenticated, 
+      hasToken: !!token,
+      tokenPreview: token ? `${token.substring(0, 20)}...` : null,
+      user: user ? 'present' : 'missing'
+    });
+  }, [isAuthenticated, token, user]);
+
   const fetchArtifacts = async (page = 1) => {
     if (!hostId) {
       setArtifacts([]);
@@ -61,7 +73,6 @@ export const ArtifactExplorer = () => {
       
       const data = await api.get(`/api/artifacts/host/${hostId}?${params.toString()}`);
       
-      // Обновляем данные и пагинацию
       setArtifacts(Array.isArray(data.data) ? data.data : []);
       setPagination(data.meta || {
         total: 0,
@@ -71,6 +82,7 @@ export const ArtifactExplorer = () => {
       });
       
     } catch (err) {
+      console.error('Fetch error:', err);
       setError(err.message);
       setArtifacts([]);
       setPagination({
@@ -148,7 +160,7 @@ export const ArtifactExplorer = () => {
       
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
         <Typography variant="body2" color="text.secondary">
-          Logged in with token: {token ? `${token.substring(0, 20)}...` : 'No token'}
+          Logged in as: {user?.username || 'Unknown'} | Token: {token ? `${token.substring(0, 20)}...` : 'No token'}
         </Typography>
         <Button 
           variant="outlined" 
@@ -263,7 +275,6 @@ export const ArtifactExplorer = () => {
             </Table>
           </TableContainer>
 
-          {/* Пагинация */}
           {pagination.total_pages > 1 && (
             <Box display="flex" justifyContent="center" mt={2} gap={1}>
               <Button

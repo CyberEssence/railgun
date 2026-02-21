@@ -71,7 +71,7 @@ func (r *ArtifactRepository) GetArtifactsByHost(ctx context.Context, hostID stri
 	artifacts := make([]*models.Artifact, len(windowsArtifacts))
 	for i, wa := range windowsArtifacts {
 		artifacts[i] = &models.Artifact{
-			ID:        wa.ID,
+			UUID:      wa.UUID,
 			HostID:    wa.HostID,
 			Type:      wa.Type,
 			Name:      wa.Path,
@@ -101,15 +101,15 @@ func (r *ArtifactRepository) GetArtifactByID(ctx context.Context, id int64) (*mo
 
 	// Конвертируем WindowsArtifact в общий Artifact
 	artifact := &models.Artifact{
-		ID:          windowsArtifact.ID,
+		UUID:        windowsArtifact.UUID,
 		HostID:      windowsArtifact.HostID,
 		Type:        windowsArtifact.Type,
-		Name:        windowsArtifact.Path, // Пример маппинга полей
+		Name:        windowsArtifact.Path,
 		Path:        windowsArtifact.Path,
 		Size:        windowsArtifact.Size,
 		Hash:        windowsArtifact.Hash,
 		Timestamp:   windowsArtifact.Timestamp,
-		ThreatLevel: 0, // Задайте соответствующее значение
+		ThreatLevel: 0,
 	}
 
 	return artifact, nil
@@ -133,7 +133,7 @@ func (r *ArtifactRepository) SaveArtifact(ctx context.Context, artifact *models.
 			"windows-artifacts",
 			bytes.NewReader(artifactJSON),
 			r.elastic.Index.WithContext(ctx),
-			r.elastic.Index.WithDocumentID(fmt.Sprintf("%d", artifact.ID)),
+			r.elastic.Index.WithDocumentID(fmt.Sprintf("%s", artifact.UUID)),
 		)
 		if err != nil {
 			log.Printf("Warning: Failed to index artifact in Elasticsearch: %v", err)
@@ -227,15 +227,14 @@ func (r *ArtifactRepository) SearchArtifacts(
 		artifacts := make([]*models.Artifact, len(windowsArtifacts))
 		for i, wa := range windowsArtifacts {
 			artifacts[i] = &models.Artifact{
-				ID:        wa.ID,
-				HostID:    wa.HostID,
-				Type:      wa.Type,
-				Name:      wa.Path, // Используем Path в качестве Name
-				Path:      wa.Path,
-				Size:      wa.Size,
-				Hash:      wa.Hash,
-				Timestamp: wa.Timestamp,
-				// Если есть ThreatLevel, добавьте его
+				UUID:        wa.UUID,
+				HostID:      wa.HostID,
+				Type:        wa.Type,
+				Name:        wa.Path,
+				Path:        wa.Path,
+				Size:        wa.Size,
+				Hash:        wa.Hash,
+				Timestamp:   wa.Timestamp,
 				ThreatLevel: wa.ThreatLevel,
 			}
 		}

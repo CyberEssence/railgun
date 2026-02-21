@@ -15,14 +15,28 @@ CREATE TABLE IF NOT EXISTS users (
     last_login TIMESTAMP WITH TIME ZONE,
     
     -- 2FA
-    twofa_enabled BOOLEAN DEFAULT false,
-    twofa_secret VARCHAR(255),
-    twofa_backup_codes TEXT[]
+    totp_enabled BOOLEAN DEFAULT false,
+    totp_secret VARCHAR(255),
+    totp_backup_codes JSONB DEFAULT '[]'::jsonb
 );
 
 -- Индексы для users (отдельные команды)
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+
+-- Таблица для токенов 2FA
+CREATE TABLE IF NOT EXISTS two_fa_tokens (
+    id BIGSERIAL PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash VARCHAR(255) NOT NULL,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    used BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_two_fa_tokens_user_id ON two_fa_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_two_fa_tokens_token_hash ON two_fa_tokens(token_hash);
+CREATE INDEX IF NOT EXISTS idx_two_fa_tokens_expires_at ON two_fa_tokens(expires_at);
 
 -- Хосты (агенты)
 CREATE TABLE IF NOT EXISTS hosts (
@@ -46,28 +60,21 @@ CREATE INDEX IF NOT EXISTS idx_hosts_host_id ON hosts(host_id);
 CREATE INDEX IF NOT EXISTS idx_hosts_status ON hosts(status);
 
 -- Инциденты
+DROP TABLE IF EXISTS incidents CASCADE;
+
 CREATE TABLE IF NOT EXISTS incidents (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    title VARCHAR(255) NOT NULL,
+    id BIGSERIAL PRIMARY KEY,
+    type VARCHAR(50) NOT NULL, -- brute_force, ai_anomaly
+    source_ip VARCHAR(45),
+    threat_level INT,
     description TEXT,
-    severity VARCHAR(20) NOT NULL, -- critical, high, medium, low
-    status VARCHAR(20) DEFAULT 'open', -- open, investigating, resolved, closed
-    source VARCHAR(50),
-    host_id VARCHAR(100),
-    detection_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    resolved_at TIMESTAMP WITH TIME ZONE,
-    assigned_to UUID REFERENCES users(id),
-    created_by UUID REFERENCES users(id),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    metadata JSONB DEFAULT '{}'
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Индексы для incidents
-CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status);
-CREATE INDEX IF NOT EXISTS idx_incidents_severity ON incidents(severity);
-CREATE INDEX IF NOT EXISTS idx_incidents_host_id ON incidents(host_id);
-CREATE INDEX IF NOT EXISTS idx_incidents_detection_time ON incidents(detection_time);
+CREATE INDEX IF NOT EXISTS idx_incidents_type ON incidents(type);
+CREATE INDEX IF NOT EXISTS idx_incidents_threat_level ON incidents(threat_level);
+CREATE INDEX IF NOT EXISTS idx_incidents_created_at ON incidents(created_at);
 
 -- Артефакты
 CREATE TABLE IF NOT EXISTS artifacts (
@@ -117,12 +124,15 @@ CREATE INDEX IF NOT EXISTS idx_events_time ON security_events(event_time);
 CREATE INDEX IF NOT EXISTS idx_events_severity ON security_events(severity);
 
 -- Атаки и паттерны
+DROP TABLE IF EXISTS attack_patterns CASCADE;
+
 CREATE TABLE IF NOT EXISTS attack_patterns (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(255) NOT NULL,
     mitre_id VARCHAR(20),
     tactic VARCHAR(100),
     technique VARCHAR(255),
+    severity VARCHAR(20) DEFAULT 'medium', 
     description TEXT,
     detection_rules JSONB,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -175,8 +185,3 @@ CREATE TRIGGER update_incidents_updated_at BEFORE UPDATE ON incidents
 CREATE INDEX IF NOT EXISTS idx_artifacts_metadata_gin ON artifacts USING gin(metadata);
 CREATE INDEX IF NOT EXISTS idx_incidents_metadata_gin ON incidents USING gin(metadata);
 CREATE INDEX IF NOT EXISTS idx_events_raw_data_gin ON security_events USING gin(raw_data);
-
--- Создание администратора по умолчанию (пароль: admin123)
-INSERT INTO users (username, email, password_hash, role)
-SELECT 'admin', 'admin@railgun.local', crypt('admin123', gen_salt('bf')), 'admin'
-WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'admin');

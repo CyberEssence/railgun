@@ -71,15 +71,14 @@ type WindowsArtifact struct {
 type User struct {
 	bun.BaseModel `bun:"table:users,alias:u"`
 
-	ID           int64  `bun:"id,pk,autoincrement"`
+	ID           string `bun:"id,pk,type:uuid,default:uuid_generate_v4()"`
 	Username     string `bun:"username,unique,notnull"`
 	Email        string `bun:"email,unique,notnull"`
 	PasswordHash string `bun:"password_hash,notnull"`
 
-	// Поля для 2FA
-	TOTPSecret      string `bun:"totp_secret"`                  // Зашифрованный секрет
-	TOTPEnabled     bool   `bun:"totp_enabled,default:false"`   // Включена ли 2FA
-	TOTPBackupCodes string `bun:"totp_backup_codes,type:jsonb"` // Резервные коды в JSON
+	TOTPSecret      string `bun:"totp_secret"`
+	TOTPEnabled     bool   `bun:"totp_enabled,default:false"`
+	TOTPBackupCodes string `bun:"totp_backup_codes,type:jsonb"`
 
 	IsActive  bool      `bun:"is_active,default:true"`
 	CreatedAt time.Time `bun:"created_at,nullzero,notnull,default:current_timestamp"`
@@ -91,7 +90,7 @@ type TwoFAToken struct {
 	bun.BaseModel `bun:"table:two_fa_tokens,alias:t"`
 
 	ID        int64     `bun:"id,pk,autoincrement"`
-	UserID    int64     `bun:"user_id,notnull"`
+	UserID    string    `bun:"user_id,notnull,type:uuid"`
 	TokenHash string    `bun:"token_hash,notnull"`
 	ExpiresAt time.Time `bun:"expires_at,notnull"`
 	Used      bool      `bun:"used,notnull,default:false"`

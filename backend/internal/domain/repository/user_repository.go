@@ -25,7 +25,7 @@ func NewUserRepository(db *bun.DB) *UserRepository {
 	}
 }
 
-func (r *UserRepository) GetUserByID(ctx context.Context, id int64) (*models.User, error) {
+func (r *UserRepository) GetUserByID(ctx context.Context, id string) (*models.User, error) {
 	user := new(models.User)
 	err := r.db.NewSelect().
 		Model(user).
@@ -53,7 +53,7 @@ func (r *UserRepository) GetUserByUsername(ctx context.Context, username string)
 	return user, nil
 }
 
-func (r *UserRepository) CreateUser(ctx context.Context, user models.User) error {
+func (r *UserRepository) CreateUser(ctx context.Context, user *models.User) error {
 	// Check if user with this email already exists
 	var existingUser models.User
 	err := r.db.NewSelect().Model(&existingUser).
@@ -104,7 +104,10 @@ func (r *UserRepository) CreateUser(ctx context.Context, user models.User) error
 		user.UpdatedAt = time.Now()
 	}
 
-	_, err = r.db.NewInsert().Model(&user).Exec(ctx)
+	_, err = r.db.NewInsert().
+		Model(user).
+		Exec(ctx)
+
 	return err
 }
 
@@ -171,7 +174,7 @@ func (r *UserRepository) SaveTwoFAToken(ctx context.Context, token models.TwoFAT
 	return nil
 }
 
-func (r *UserRepository) GetTwoFAToken(ctx context.Context, tokenHash string, userID int64) (*models.TwoFAToken, error) {
+func (r *UserRepository) GetTwoFAToken(ctx context.Context, tokenHash string, userID string) (*models.TwoFAToken, error) {
 	token := new(models.TwoFAToken)
 	err := r.db.NewSelect().
 		Model(token).
@@ -201,7 +204,7 @@ func (r *UserRepository) MarkTokenAsUsed(ctx context.Context, tokenID int64) err
 	return err
 }
 
-func (r *UserRepository) Enable2FA(ctx context.Context, userID int64, secret string, backupCodes []string) error {
+func (r *UserRepository) Enable2FA(ctx context.Context, userID string, secret string, backupCodes []string) error {
 	backupCodesJSON, err := json.Marshal(backupCodes)
 	if err != nil {
 		return err
@@ -218,7 +221,7 @@ func (r *UserRepository) Enable2FA(ctx context.Context, userID int64, secret str
 	return err
 }
 
-func (r *UserRepository) Disable2FA(ctx context.Context, userID int64) error {
+func (r *UserRepository) Disable2FA(ctx context.Context, userID string) error {
 	_, err := r.db.NewUpdate().
 		Model(&models.User{}).
 		Set("totp_secret = ?", "").
@@ -230,7 +233,7 @@ func (r *UserRepository) Disable2FA(ctx context.Context, userID int64) error {
 	return err
 }
 
-func (r *UserRepository) GetTOTPSecret(ctx context.Context, userID int64) (string, error) {
+func (r *UserRepository) GetTOTPSecret(ctx context.Context, userID string) (string, error) {
 	var user models.User
 	err := r.db.NewSelect().
 		Model(&user).
