@@ -50,6 +50,7 @@ func RegisterRoutes(
 		authGroup.POST("/register", authHandler.Register)
 		authGroup.POST("/verify-2fa", authHandler.Verify2FA)
 		authGroup.POST("/refresh", authHandler.RefreshToken)
+		authGroup.POST("/login/2fa", authHandler.VerifyLogin2FA)
 
 		protected := authGroup.Group("")
 		protected.Use(authHandler.AuthMiddleware())

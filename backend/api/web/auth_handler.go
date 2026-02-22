@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -69,7 +70,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	if user.TOTPEnabled {
 		c.JSON(http.StatusOK, gin.H{
 			"requires_2fa": true,
-			"user_id":      user.ID,
+			"userId":       user.ID,
 			"message":      "Please enter your 2FA code",
 		})
 		return
@@ -78,6 +79,64 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	// Если 2FA не включена - сразу выдаем токены
 	accessToken, refreshToken, expiresIn, err := h.generateTokens(user.ID)
 	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate tokens"})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.TokenResponse{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		ExpiresIn:    expiresIn,
+		TokenType:    "Bearer",
+	})
+}
+
+func (h *AuthHandler) VerifyLogin2FA(c *gin.Context) {
+	var req struct {
+		UserID string `json:"userId" binding:"required"`
+		Token  string `json:"token" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	log.Printf("Verifying 2FA for login, user: %s", req.UserID)
+
+	// Получаем пользователя
+	user, err := h.userRepo.GetUserByID(c.Request.Context(), req.UserID)
+	if err != nil {
+		log.Printf("Failed to get user: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get user data"})
+		return
+	}
+
+	// Проверяем, включена ли 2FA
+	if !user.TOTPEnabled {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "2FA is not enabled for this user"})
+		return
+	}
+
+	// Проверяем TOTP код
+	valid, err := h.twoFAService.ValidateTOTP(c.Request.Context(), req.Token, req.UserID, user.TOTPSecret)
+	if err != nil || !valid {
+		log.Printf("TOTP validation failed: %v", err)
+
+		if s, _ := h.twoFAService.ValidateBackupCode(c.Request.Context(), req.Token, req.UserID); s {
+			log.Printf("Backup code used for user %s", req.UserID)
+		} else {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid 2FA code"})
+			return
+		}
+	}
+
+	log.Printf("2FA validation successful for user %s", req.UserID)
+
+	// Генерируем токены
+	accessToken, refreshToken, expiresIn, err := h.generateTokens(req.UserID)
+	if err != nil {
+		log.Printf("Token generation failed: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate tokens"})
 		return
 	}
@@ -102,9 +161,9 @@ func (h *AuthHandler) Login(c *gin.Context) {
 // @Failure      401  {object}  map[string]string "Неверный 2FA код"
 // @Router       /auth/verify-2fa [post]
 func (h *AuthHandler) Verify2FA(c *gin.Context) {
-	var req requests.Verify2FARequest
+	var rawData map[string]interface{}
 
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBindJSON(&rawData); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":   "Invalid request format",
 			"details": err.Error(),
@@ -112,22 +171,60 @@ func (h *AuthHandler) Verify2FA(c *gin.Context) {
 		return
 	}
 
-	log.Printf("Verifying TOTP code for user %s", req.UserID)
-
-	valid, err := h.twoFAService.ValidateTOTPToken(c.Request.Context(), req.Token, req.UserID)
-	if err != nil || !valid {
-		log.Printf("TOTP validation failed: %v", err)
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "Invalid 2FA code",
-			"details": err.Error(), // Добавляем детали для отладки
+	// Извлекаем token
+	token, ok := rawData["token"].(string)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "token is required and must be a string",
 		})
 		return
 	}
 
-	log.Printf("TOTP validation successful for user %s", req.UserID)
+	// Извлекаем userId
+	var userID string
+	if id, ok := rawData["userId"].(string); ok {
+		userID = id
+	} else {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "userId is required",
+		})
+		return
+	}
+
+	log.Printf("Verifying TOTP code for user %s", userID)
+
+	user, err := h.userRepo.GetUserByID(c.Request.Context(), userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "Failed to get user data",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	// Проверяем, включена ли 2FA
+	if !user.TOTPEnabled || user.TOTPSecret == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "2FA is not enabled for this user",
+		})
+		return
+	}
+
+	// Используем метод ValidateTOTP с 4 аргументами
+	valid, err := h.twoFAService.ValidateTOTP(c.Request.Context(), token, userID, user.TOTPSecret)
+	if err != nil || !valid {
+		log.Printf("TOTP validation failed: %v", err)
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":   "Invalid 2FA code",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	log.Printf("TOTP validation successful for user %s", userID)
 
 	// Генерация JWT токенов
-	accessToken, refreshToken, expiresIn, err := h.generateTokens(req.UserID)
+	accessToken, refreshToken, expiresIn, err := h.generateTokens(userID)
 	if err != nil {
 		log.Printf("Token generation failed: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate tokens"})
@@ -178,7 +275,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	newUser := &models.User{
 		Username:     req.Username,
 		Email:        req.Email,
-		PasswordHash: req.Password, // UserRepository выполнит хеширование
+		PasswordHash: req.Password,
 		CreatedAt:    time.Now(),
 	}
 
@@ -192,6 +289,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "User registered successfully",
 		"user": gin.H{
+			"id":       newUser.ID,
 			"username": newUser.Username,
 			"email":    newUser.Email,
 		},
@@ -233,7 +331,7 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 		return
 	}
 
-	userID, ok := claims["user_id"].(string)
+	userID, ok := claims["userId"].(string)
 	if !ok {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID in token"})
 		return
@@ -289,10 +387,9 @@ func (h *AuthHandler) AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// Исправление: проверяем тип user_id и конвертируем в строку
 		var userID string
 		// Позже удалить switch
-		switch v := claims["user_id"].(type) {
+		switch v := claims["userId"].(type) {
 		case string:
 			// Если в токене строка (UUID)
 			userID = v
@@ -301,13 +398,13 @@ func (h *AuthHandler) AuthMiddleware() gin.HandlerFunc {
 			userID = fmt.Sprintf("%d", int64(v))
 		default:
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-				"error": fmt.Sprintf("Invalid user ID type in token: %T", claims["user_id"]),
+				"error": fmt.Sprintf("Invalid user ID type in token: %T", claims["userId"]),
 			})
 			return
 		}
 
 		// Сохраняем ID пользователя в контексте как строку
-		c.Set("user_id", userID)
+		c.Set("userId", userID)
 		c.Next()
 	}
 }
@@ -317,11 +414,11 @@ func (h *AuthHandler) generateTokens(userID string) (string, string, int, error)
 	// Создаем access token
 	accessTokenTTL := time.Duration(h.config.Auth.TokenTTL) * time.Second
 	accessTokenClaims := jwt.MapClaims{
-		"user_id": userID,
-		"exp":     time.Now().Add(accessTokenTTL).Unix(),
-		"iat":     time.Now().Unix(),
-		"iss":     h.config.Auth.IssuerURL,
-		"type":    "access",
+		"userId": userID,
+		"exp":    time.Now().Add(accessTokenTTL).Unix(),
+		"iat":    time.Now().Unix(),
+		"iss":    h.config.Auth.IssuerURL,
+		"type":   "access",
 	}
 	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, accessTokenClaims)
 	accessTokenString, err := accessToken.SignedString([]byte(h.config.Auth.Secret))
@@ -331,11 +428,11 @@ func (h *AuthHandler) generateTokens(userID string) (string, string, int, error)
 
 	// Создаем refresh token (с более длительным сроком действия)
 	refreshTokenClaims := jwt.MapClaims{
-		"user_id": userID,
-		"exp":     time.Now().Add(7 * 24 * time.Hour).Unix(), // 7 дней
-		"iat":     time.Now().Unix(),
-		"iss":     h.config.Auth.IssuerURL,
-		"type":    "refresh",
+		"userId": userID,
+		"exp":    time.Now().Add(7 * 24 * time.Hour).Unix(), // 7 дней
+		"iat":    time.Now().Unix(),
+		"iss":    h.config.Auth.IssuerURL,
+		"type":   "refresh",
 	}
 	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshTokenClaims)
 	refreshTokenString, err := refreshToken.SignedString([]byte(h.config.Auth.Secret))
@@ -358,11 +455,17 @@ func (h *AuthHandler) generateTokens(userID string) (string, string, int, error)
 // @Failure      401  {object}  map[string]string "Пользователь не авторизован"
 // @Router       /api/auth/2fa/enable [post]
 func (h *AuthHandler) Enable2FA(c *gin.Context) {
-	userID := c.GetString("user_id")
+	userID := c.GetString("userId")
 
 	user, err := h.userRepo.GetUserByID(c.Request.Context(), userID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
+	// Проверяем, не включена ли уже 2FA
+	if user.TOTPEnabled {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "2FA is already enabled"})
 		return
 	}
 
@@ -391,7 +494,7 @@ func (h *AuthHandler) Enable2FA(c *gin.Context) {
 // @Router       /api/auth/2fa/verify-setup [post]
 func (h *AuthHandler) Verify2FASetup(c *gin.Context) {
 	var req struct {
-		UserID string `json:"user_id" binding:"required"`
+		UserID string `json:"userId" binding:"required"`
 		Token  string `json:"token" binding:"required"`
 	}
 
@@ -400,37 +503,62 @@ func (h *AuthHandler) Verify2FASetup(c *gin.Context) {
 		return
 	}
 
-	// Проверяем 2FA токен
-	valid, err := h.twoFAService.ValidateTOTPToken(c.Request.Context(), req.Token, req.UserID)
+	log.Printf("Verifying 2FA setup for user: %s with token: %s", req.UserID, req.Token)
+
+	// Получаем пользователя для доступа к секрету
+	user, err := h.userRepo.GetUserByID(c.Request.Context(), req.UserID)
+	if err != nil {
+		log.Printf("Failed to get user: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get user data"})
+		return
+	}
+
+	// Проверяем, что секрет существует
+	if user.TOTPSecret == "" {
+		log.Printf("TOTPSecret is empty for user %s", req.UserID)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "2FA not initialized"})
+		return
+	}
+
+	// Проверяем TOTP код
+	valid, err := h.twoFAService.ValidateTOTP(c.Request.Context(), req.Token, req.UserID, user.TOTPSecret)
 	if err != nil || !valid {
+		log.Printf("TOTP validation failed: %v", err)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid 2FA code"})
 		return
 	}
 
-	// Получаем данные пользователя из БД
-	user, err := h.userRepo.GetUserByID(c.Request.Context(), req.UserID)
+	log.Printf("TOTP validation successful, enabling 2FA for user %s", req.UserID)
+
+	backupCodes, err := h.twoFAService.Activate2FA(c.Request.Context(), req.UserID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get user data"})
+		log.Printf("Failed to activate 2FA: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to enable 2FA: " + err.Error()})
 		return
 	}
 
 	// Генерируем токены
 	accessToken, refreshToken, expiresIn, err := h.generateTokens(req.UserID)
 	if err != nil {
+		log.Printf("Token generation failed: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate tokens"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"access_token":  accessToken,
-		"refresh_token": refreshToken,
-		"expires_in":    expiresIn,
-		"token_type":    "Bearer",
-		"user_id":       user.ID,
-		"username":      user.Username, // Добавляем username
-		"email":         user.Email,    // Добавляем email
-		"totp_enabled":  user.TOTPEnabled,
-	})
+	response := gin.H{
+		"accessToken":  accessToken,
+		"refreshToken": refreshToken,
+		"expiresIn":    expiresIn,
+		"tokenType":    "Bearer",
+		"userId":       user.ID,
+		"username":     user.Username,
+		"email":        user.Email,
+		"totpEnabled":  true,
+		"backupCodes":  backupCodes,
+		"message":      "2FA successfully enabled",
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
 // Get2FAStatus godoc
@@ -442,7 +570,7 @@ func (h *AuthHandler) Verify2FASetup(c *gin.Context) {
 // @Success      200  {object}  map[string]interface{} "Статус 2FA"
 // @Router       /api/auth/2fa/status [get]
 func (h *AuthHandler) Get2FAStatus(c *gin.Context) {
-	userIDValue, exists := c.Get("user_id")
+	userIDValue, exists := c.Get("userId")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
@@ -456,9 +584,29 @@ func (h *AuthHandler) Get2FAStatus(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"enabled":          user.TOTPEnabled,
-		"has_backup_codes": user.TOTPBackupCodes != "[]" && user.TOTPBackupCodes != "",
+		"enabled":        user.TOTPEnabled,
+		"hasBackupCodes": hasBackupCodes(user.TOTPBackupCodes),
 	})
+}
+
+func hasBackupCodes(codes json.RawMessage) bool {
+	// Проверяем на nil или пустой массив
+	if len(codes) == 0 {
+		return false
+	}
+
+	// Проверяем, что это не пустой JSON массив
+	if string(codes) == "[]" || string(codes) == "null" {
+		return false
+	}
+
+	// Пробуем распарсить для проверки, что это не пустой массив
+	var backupCodes []string
+	if err := json.Unmarshal(codes, &backupCodes); err != nil {
+		return false
+	}
+
+	return len(backupCodes) > 0
 }
 
 // Disable2FA godoc
@@ -474,7 +622,7 @@ func (h *AuthHandler) Get2FAStatus(c *gin.Context) {
 // @Router       /api/auth/2fa/disable [post]
 func (h *AuthHandler) Disable2FA(c *gin.Context) {
 	// Берем user_id из JWT
-	userIDValue, exists := c.Get("user_id")
+	userIDValue, exists := c.Get("userId")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
@@ -517,7 +665,7 @@ func (h *AuthHandler) Disable2FA(c *gin.Context) {
 }
 
 func (h *AuthHandler) GenerateNewBackupCodes(c *gin.Context) {
-	userID := c.GetString("user_id")
+	userID := c.GetString("userId")
 
 	backupCodes, err := h.twoFAService.GenerateNewBackupCodes(c.Request.Context(), userID)
 	if err != nil {
@@ -526,8 +674,8 @@ func (h *AuthHandler) GenerateNewBackupCodes(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"backup_codes": backupCodes,
-		"message":      "Save these codes in a secure place!",
+		"backupCodes": backupCodes,
+		"message":     "Save these codes in a secure place!",
 	})
 }
 
@@ -548,7 +696,7 @@ func (h *AuthHandler) AgentAuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		c.Set("agent_id", agentID)
+		c.Set("agentId", agentID)
 		c.Next()
 	}
 }
@@ -556,9 +704,9 @@ func (h *AuthHandler) AgentAuthMiddleware() gin.HandlerFunc {
 // Генерация токенов для агентов
 func GenerateAgentToken(hostID string) (string, error) {
 	claims := jwt.MapClaims{
-		"host_id": hostID,
-		"type":    "agent",
-		"exp":     time.Now().Add(24 * 365 * time.Hour).Unix(), // 1 год
+		"hostId": hostID,
+		"type":   "agent",
+		"exp":    time.Now().Add(24 * 365 * time.Hour).Unix(), // 1 год
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -567,9 +715,7 @@ func GenerateAgentToken(hostID string) (string, error) {
 
 // validateAgentToken проверяет токен агента
 func validateAgentToken(token string) (string, error) {
-	// Для начала можно использовать простую проверку JWT
 	parsedToken, err := jwt.Parse(token, func(token *jwt.Token) (interface{}, error) {
-		// В реальном приложении используйте секрет из конфигурации
 		return []byte("your-agent-secret"), nil
 	})
 

@@ -92,9 +92,8 @@ func (r *UserRepository) CreateUser(ctx context.Context, user *models.User) erro
 	if !user.TOTPEnabled {
 		user.TOTPEnabled = false
 	}
-	if user.TOTPBackupCodes == "" {
-		// Правильное значение JSONB для PostgreSQL
-		user.TOTPBackupCodes = "[]"
+	if len(user.TOTPBackupCodes) == 0 || string(user.TOTPBackupCodes) == "null" {
+		user.TOTPBackupCodes = json.RawMessage("[]")
 	}
 
 	if user.CreatedAt.IsZero() {
@@ -106,6 +105,7 @@ func (r *UserRepository) CreateUser(ctx context.Context, user *models.User) erro
 
 	_, err = r.db.NewInsert().
 		Model(user).
+		Returning("id").
 		Exec(ctx)
 
 	return err
@@ -122,7 +122,7 @@ func (r *UserRepository) UpdateUser(ctx context.Context, user *models.User) erro
 	}
 
 	_, err := r.db.NewUpdate().
-		Model(&user).
+		Model(user).
 		Where("id = ?", user.ID).
 		Exec(ctx)
 
@@ -174,6 +174,21 @@ func (r *UserRepository) SaveTwoFAToken(ctx context.Context, token models.TwoFAT
 	return nil
 }
 
+func (r *UserRepository) SaveTOTPSecret(ctx context.Context, userID string, secret string) error {
+	_, err := r.db.NewUpdate().
+		Model((*models.User)(nil)).
+		Set("totp_secret = ?", secret).
+		Where("id = ?", userID).
+		Exec(ctx)
+
+	if err != nil {
+		return fmt.Errorf("failed to update totp_secret: %v", err)
+	}
+
+	log.Printf("TOTP secret saved for user %s", userID)
+	return err
+}
+
 func (r *UserRepository) GetTwoFAToken(ctx context.Context, tokenHash string, userID string) (*models.TwoFAToken, error) {
 	token := new(models.TwoFAToken)
 	err := r.db.NewSelect().
@@ -194,7 +209,6 @@ func (r *UserRepository) GetTwoFAToken(ctx context.Context, tokenHash string, us
 }
 
 func (r *UserRepository) MarkTokenAsUsed(ctx context.Context, tokenID int64) error {
-	// Исправлено: используем правильную модель
 	_, err := r.db.NewUpdate().
 		Model((*models.TwoFAToken)(nil)). // Используем правильную модель
 		Set("used = true").
@@ -204,21 +218,31 @@ func (r *UserRepository) MarkTokenAsUsed(ctx context.Context, tokenID int64) err
 	return err
 }
 
-func (r *UserRepository) Enable2FA(ctx context.Context, userID string, secret string, backupCodes []string) error {
+func (r *UserRepository) Enable2FA(ctx context.Context, userID string, encryptedSecret string, backupCodes []string) error {
+	log.Printf("Repository: Enabling 2FA for user %s", userID)
+
+	// Конвертируем backupCodes в JSON для сохранения
 	backupCodesJSON, err := json.Marshal(backupCodes)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to marshal backup codes: %v", err)
 	}
 
+	// Используем bun Update
 	_, err = r.db.NewUpdate().
-		Model(&models.User{}).
-		Set("totp_secret = ?", secret).
-		Set("totp_enabled = ?", true).
+		Model((*models.User)(nil)).
+		Set("totp_secret = ?", encryptedSecret).
 		Set("totp_backup_codes = ?", string(backupCodesJSON)).
+		Set("totp_enabled = ?", true).
 		Where("id = ?", userID).
 		Exec(ctx)
 
-	return err
+	if err != nil {
+		log.Printf("Error updating user 2FA data: %v", err)
+		return fmt.Errorf("failed to update user 2FA data: %v", err)
+	}
+
+	log.Printf("Repository: 2FA data saved successfully for user %s", userID)
+	return nil
 }
 
 func (r *UserRepository) Disable2FA(ctx context.Context, userID string) error {
@@ -246,6 +270,19 @@ func (r *UserRepository) GetTOTPSecret(ctx context.Context, userID string) (stri
 	}
 
 	return user.TOTPSecret, nil
+}
+
+func (r *UserRepository) EnableTOTP(ctx context.Context, userID string) error {
+	log.Printf("Enabling TOTP for user %s", userID)
+
+	_, err := r.db.NewUpdate().
+		Model((*models.User)(nil)).
+		Set("totp_enabled = ?", true).
+		Set("updated_at = ?", time.Now()).
+		Where("id = ?", userID).
+		Exec(ctx)
+
+	return err
 }
 
 // Вспомогательная функция для проверки, является ли строка хешированным паролем

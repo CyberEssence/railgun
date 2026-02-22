@@ -50,6 +50,7 @@ type UserRepository interface {
 	GetTOTPSecret(ctx context.Context, userID string) (string, error)
 	Enable2FA(ctx context.Context, userID string, secret string, backupCodes []string) error
 	Disable2FA(ctx context.Context, userID string) error
+	SaveTOTPSecret(ctx context.Context, userID string, secret string) error
 }
 
 type AIService interface {
@@ -76,7 +77,9 @@ type TwoFAService interface {
 	Disable2FA(ctx context.Context, userID string) error
 	GenerateNewBackupCodes(ctx context.Context, userID string) ([]string, error)
 	VerifySetup(ctx context.Context, token string, userID string) (bool, error)
-	ValidateTOTPToken(ctx context.Context, token string, userID string) (bool, error)
+	ValidateTOTP(ctx context.Context, token string, userID string, secret string) (bool, error)
+	Activate2FA(ctx context.Context, userID string) ([]string, error)
+	ValidateBackupCode(ctx context.Context, code string, userID string) (bool, error)
 }
 
 type DetectionEngine interface {

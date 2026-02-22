@@ -1,6 +1,7 @@
 package models
 
 import (
+	"encoding/json"
 	"railgun-core/internal/domain/dto"
 	"time"
 
@@ -142,7 +143,7 @@ type User struct {
 	TOTPSecret  string `bun:"totp_secret"`
 	TOTPEnabled bool   `bun:"totp_enabled,default:false"`
 
-	TOTPBackupCodes string `bun:"totp_backup_codes,type:jsonb"`
+	TOTPBackupCodes json.RawMessage `bun:"totp_backup_codes,type:jsonb"`
 
 	IsActive  bool      `bun:"is_active,default:true"`
 	CreatedAt time.Time `bun:"created_at,nullzero,notnull,default:current_timestamp"`
@@ -386,10 +387,10 @@ type LoginResponse struct {
 
 // TokenResponse - ответ с JWT токенами
 type TokenResponse struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
-	ExpiresIn    int    `json:"expires_in"`
-	TokenType    string `json:"token_type"`
+	AccessToken  string `json:"accessToken"`
+	RefreshToken string `json:"refreshToken"`
+	ExpiresIn    int    `json:"expiresIn"`
+	TokenType    string `json:"tokenType"`
 }
 
 type EventCorrelation struct {

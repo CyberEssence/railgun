@@ -2,7 +2,7 @@ package requests
 
 // Verify2FARequest структура для запроса на проверку 2FA
 type Verify2FARequest struct {
-	UserID string `json:"user_id" binding:"required"`
+	UserID string `json:"userId" binding:"required"`
 	Token  string `json:"token" binding:"required"`
 }
 
@@ -10,7 +10,7 @@ type Verify2FARequest struct {
 type LoginRequest struct {
 	Username   string `json:"username" binding:"required"`
 	Password   string `json:"password" binding:"required"`
-	TwoFAToken string `json:"two_fa_token,omitempty"`
+	TwoFAToken string `json:"twofaToken,omitempty"`
 }
 
 // RegisterRequest структура для запроса на регистрацию

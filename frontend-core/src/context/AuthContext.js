@@ -71,8 +71,6 @@ export const AuthProvider = ({ children }) => {
   // Верификация TOTP кода
   const verify2FA = async (userId, token) => {
     try {
-      console.log('Verifying 2FA for user:', userId);
-      
       const response = await fetch(`${API_BASE_URL}/api/auth/verify-2fa`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -88,36 +86,18 @@ export const AuthProvider = ({ children }) => {
       }
 
       const data = await response.json();
-      console.log('2FA verification response:', data);
       
-      // Получаем существующие данные пользователя из localStorage
-      const storedUser = localStorage.getItem('user');
-      let existingUserData = null;
-      
-      if (storedUser) {
-        try {
-          existingUserData = JSON.parse(storedUser);
-        } catch (e) {
-          console.error('Failed to parse stored user:', e);
-        }
-      }
-      
-      // Создаем объект пользователя, сохраняя существующие данные
       const userData = {
-        id: data.user_id,  // используем переданный userId, не из data
-        username: existingUserData?.username || 'User',
-        email: existingUserData?.email || '',
+        id: userId,
+        username: data.username || 'User',
+        email: data.email,
         token: data.access_token,
         refreshToken: data.refresh_token,
         expiresIn: data.expires_in,
-        role: existingUserData?.role || 'user',
-        totpEnabled: true, // 2FA теперь включена
       };
       
-      // Сохраняем в state и localStorage
       setUser(userData);
       localStorage.setItem('user', JSON.stringify(userData));
-      
       return true;
       
     } catch (error) {
@@ -125,7 +105,7 @@ export const AuthProvider = ({ children }) => {
       throw error;
     }
   };
-
+  
   // Включение 2FA
   const enable2FA = async () => {
     try {

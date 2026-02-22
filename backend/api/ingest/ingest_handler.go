@@ -82,13 +82,13 @@ func (h *IngestHandler) SaveTraffic(c *gin.Context) {
 		traffic.Timestamp = time.Now()
 	}
 
-	// 1. Сохраняем в БД
+	// Сохраняем в БД
 	if err := h.trafficRepo.SaveTraffic(c.Request.Context(), traffic); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	// 2. СРАЗУ отправляем в Engine для корреляции (асинхронно)
+	// СРАЗУ отправляем в Engine для корреляции (асинхронно)
 	go h.engine.AddEvent(context.Background(), models.EventCorrelation{
 		Type:      "network_flow",
 		SourceIP:  traffic.SrcIP,

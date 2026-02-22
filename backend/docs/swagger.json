@@ -1,5 +1,5 @@
 {
-    "swagger": "2.0",
+    "openapi": "3.0.0",
     "info": {
         "description": "Railgun AI-driven SIEM API",
         "title": "Railgun API",
