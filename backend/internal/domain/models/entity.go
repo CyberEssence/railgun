@@ -5,6 +5,7 @@ import (
 	"railgun-core/internal/domain/dto"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 )
 
@@ -100,18 +101,18 @@ type NetworkTraffic struct {
 type WindowsArtifact struct {
 	bun.BaseModel `bun:"table:windows_artifacts,alias:wa"`
 
-	UUID        string                 `bun:"id,pk,autoincrement" json:"id"`
-	HostID      string                 `bun:"host_id,notnull" json:"host_id"`
-	Timestamp   time.Time              `bun:"timestamp,notnull" json:"timestamp"`
-	Type        string                 `bun:"type,notnull" json:"type"`
-	Path        string                 `bun:"path" json:"path"`
-	Value       string                 `bun:"value" json:"value"`
-	Size        int64                  `bun:"size" json:"size"`
-	Hash        string                 `bun:"hash" json:"hash"`
-	Owner       string                 `bun:"owner" json:"owner"`
-	Permissions string                 `bun:"permissions" json:"permissions"`
-	Metadata    map[string]interface{} `bun:"metadata,type:jsonb" json:"metadata"`
-	ThreatLevel int                    `bun:"threat_level" json:"threat_level"`
+	ID          int64     `json:"-" bun:"id,pk,autoincrement"`
+	UUID        string    `json:"id" bun:"uuid"` // UUID для публичного API
+	HostID      string    `json:"host_id" bun:"host_id"`
+	Type        string    `json:"type" bun:"type"`
+	Path        string    `json:"path" bun:"path"`
+	Size        int64     `json:"size" bun:"size"`
+	Hash        string    `json:"hash" bun:"hash"`
+	Value       string    `json:"value,omitempty" bun:"value"`
+	Owner       string    `json:"owner,omitempty" bun:"owner"`
+	Permissions string    `json:"permissions,omitempty" bun:"permissions"`
+	Timestamp   time.Time `json:"timestamp" bun:"timestamp"`
+	ThreatLevel int       `json:"threat_level" bun:"threat_level"`
 }
 
 // ToWindowsArtifactDTO() преобразует модель в DTO для API
@@ -127,8 +128,17 @@ func (w *WindowsArtifact) ToWindowsArtifactDTO() dto.WindowsArtifactDTO {
 		Hash:        w.Hash,
 		Owner:       w.Owner,
 		Permissions: w.Permissions,
-		Metadata:    w.Metadata,
 		ThreatLevel: w.ThreatLevel,
+	}
+}
+
+// BeforeInsert генерирует UUID перед вставкой
+func (w *WindowsArtifact) BeforeInsert() {
+	if w.UUID == "" {
+		w.UUID = uuid.New().String()
+	}
+	if w.Timestamp.IsZero() {
+		w.Timestamp = time.Now().UTC()
 	}
 }
 
@@ -333,16 +343,16 @@ type AnalysisResult struct {
 }
 
 type Artifact struct {
-	UUID        string    `json:"id"`
-	HostID      string    `json:"host_id"`
-	Type        string    `json:"type"` // file, registry, process и т.д.
-	Name        string    `json:"name"`
-	Path        string    `json:"path"`
-	Size        int64     `json:"size"`
-	Hash        string    `json:"hash"`
-	Timestamp   time.Time `json:"timestamp"`
-	ThreatLevel int       `json:"threat_level"`
-	Content     []byte    `json:"content,omitempty"`
+	UUID        string    `json:"id" bun:"uuid,pk"` // UUID как первичный ключ
+	HostID      string    `json:"host_id" bun:"host_id"`
+	Type        string    `json:"type" bun:"type"`
+	Name        string    `json:"name" bun:"name"`
+	Path        string    `json:"path" bun:"path"`
+	Size        int64     `json:"size" bun:"size"`
+	Hash        string    `json:"hash" bun:"hash"`
+	Timestamp   time.Time `json:"timestamp" bun:"timestamp"`
+	ThreatLevel int       `json:"threat_level" bun:"threat_level"`
+	Content     []byte    `json:"content,omitempty" bun:"content,omitempty"`
 }
 
 type ThreatStats struct {

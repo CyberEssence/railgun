@@ -36,6 +36,7 @@ type ArtifactRepository interface {
 	GetArtifactByID(ctx context.Context, id int64) (*models.Artifact, error)
 	SaveArtifact(ctx context.Context, artifact *models.WindowsArtifact) error
 	SearchArtifacts(ctx context.Context, query, artifactType, severity string, page, perPage int) ([]*models.Artifact, int, error)
+	GetArtifactByUUID(ctx context.Context, uuid string) (*models.Artifact, error)
 }
 
 // UserRepository интерфейс для работы с пользователями

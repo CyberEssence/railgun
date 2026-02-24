@@ -1,37 +1,21 @@
-host_id: ""
-hostname: ""
+host_id: ""  # Автогенерация если пусто
+hostname: "" # Автогенерация если пусто
 
 collector:
   system: true
   network: true
-  processes: false
+  processes: false  # Отключено по умолчанию из-за нагрузки
   security: true
   docker: false
-  interval: 60s
-
-sender:
+  interval: 30s
   batch_size: 50
-  flush_interval: 10s
-  retry_count: 3
-  retry_backoff: 1s
 
-# Приоритет 1 - прямая отправка в SIEM
-siem:
-  enabled: true
-  url: "http://localhost:8080"
-  token: "your-siem-token"
-
-# Приоритет 2 - Kafka
-kafka:
-  enabled: false
-  brokers: ["localhost:9092"]
-  topic: "siem-logs"
-  sasl: false
-
-# Приоритет 3 - Elasticsearch
 elastic:
-  enabled: false
-  url: "http://localhost:9200"
-  index: "siem-logs-%{+yyyy.MM.dd}"
+  enabled: true
+  urls:
+    - "http://localhost:9200"
+  username: "elastic"
+  password: ""
+  index: "siem-logs-v2-%{+yyyy.MM.dd}"
 
 log_level: "info"

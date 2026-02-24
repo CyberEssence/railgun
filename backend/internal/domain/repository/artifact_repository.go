@@ -1,307 +1,287 @@
-package persistence
+package repository
 
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"log"
 	"strings"
-
-	"github.com/elastic/go-elasticsearch/v8"
-	"github.com/uptrace/bun"
+	"time"
 
 	"railgun-core/internal/domain/models"
+
+	"github.com/elastic/go-elasticsearch/v8"
 )
 
+// ArtifactRepository реализует интерфейс для работы с артефактами через Elasticsearch
 type ArtifactRepository struct {
-	db      *bun.DB
-	elastic *elasticsearch.Client
+	client      *elasticsearch.Client
+	searchIndex string // для поиска используем паттерн
+	writeIndex  string // для записи используем конкретный индекс
 }
 
-func NewArtifactRepository(db *bun.DB, elasticURL string) *ArtifactRepository {
+// NewArtifactRepository создает новый репозиторий
+func NewArtifactRepository(addresses []string, username, password, indexPattern string) (*ArtifactRepository, error) {
 	cfg := elasticsearch.Config{
-		Addresses: []string{elasticURL},
+		Addresses: addresses,
+		Username:  username,
+		Password:  password,
 	}
 
-	es, err := elasticsearch.NewClient(cfg)
+	client, err := elasticsearch.NewClient(cfg)
 	if err != nil {
-		log.Printf("Error creating Elasticsearch client: %v", err)
-		return &ArtifactRepository{
-			db:      db,
-			elastic: nil,
-		}
+		return nil, fmt.Errorf("failed to create elasticsearch client: %w", err)
 	}
 
-	// Проверка соединения с Elasticsearch
-	res, err := es.Ping()
+	// Проверяем подключение
+	res, err := client.Info()
 	if err != nil {
-		log.Printf("Elasticsearch ping failed: %v", err)
-		return &ArtifactRepository{
-			db:      db,
-			elastic: nil,
-		}
+		return nil, fmt.Errorf("failed to connect to elasticsearch: %w", err)
 	}
 	defer res.Body.Close()
 
-	// Создание индекса с обработкой ошибок
-	res, err = es.Indices.Create("windows-artifacts")
-	if err != nil && !strings.Contains(err.Error(), "resource_already_exists_exception") {
-		log.Printf("Error creating index: %v", err)
+	if res.IsError() {
+		return nil, fmt.Errorf("elasticsearch error: %s", res.String())
+	}
+
+	// Для поиска используем паттерн
+	searchIndex := indexPattern
+	if searchIndex == "" || strings.Contains(searchIndex, "*") {
+		searchIndex = "siem-logs-*"
 	}
 
 	return &ArtifactRepository{
-		db:      db,
-		elastic: es,
-	}
+		client:      client,
+		searchIndex: searchIndex,
+		writeIndex:  "siem-logs-" + time.Now().Format("2006.01.02"),
+	}, nil
 }
 
+// GetArtifactsByHost получает артефакты по хосту
 func (r *ArtifactRepository) GetArtifactsByHost(ctx context.Context, hostID string, page, perPage int) ([]*models.Artifact, int, error) {
-	var windowsArtifacts []models.WindowsArtifact
-	count, err := r.db.NewSelect().
-		Model(&windowsArtifacts).
-		Where("host_id = ?", hostID).
-		Limit(perPage).
-		Offset((page - 1) * perPage).
-		ScanAndCount(ctx)
+	from := (page - 1) * perPage
 
-	// Конвертация в общий тип Artifact
-	artifacts := make([]*models.Artifact, len(windowsArtifacts))
-	for i, wa := range windowsArtifacts {
-		artifacts[i] = &models.Artifact{
-			UUID:      wa.UUID,
-			HostID:    wa.HostID,
-			Type:      wa.Type,
-			Name:      wa.Path,
-			Path:      wa.Path,
-			Size:      wa.Size,
-			Hash:      wa.Hash,
-			Timestamp: wa.Timestamp,
-		}
-	}
-
-	return artifacts, count, err
-}
-
-func (r *ArtifactRepository) GetArtifactByID(ctx context.Context, id int64) (*models.Artifact, error) {
-	windowsArtifact := new(models.WindowsArtifact)
-	err := r.db.NewSelect().
-		Model(windowsArtifact).
-		Where("id = ?", id).
-		Scan(ctx)
-
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, sql.ErrNoRows // Явно возвращаем ошибку "не найдено"
-		}
-		return nil, fmt.Errorf("database error: %w", err)
-	}
-
-	// Конвертируем WindowsArtifact в общий Artifact
-	artifact := &models.Artifact{
-		UUID:        windowsArtifact.UUID,
-		HostID:      windowsArtifact.HostID,
-		Type:        windowsArtifact.Type,
-		Name:        windowsArtifact.Path,
-		Path:        windowsArtifact.Path,
-		Size:        windowsArtifact.Size,
-		Hash:        windowsArtifact.Hash,
-		Timestamp:   windowsArtifact.Timestamp,
-		ThreatLevel: 0,
-	}
-
-	return artifact, nil
-}
-
-func (r *ArtifactRepository) SaveArtifact(ctx context.Context, artifact *models.WindowsArtifact) error {
-	// Сохраняем в PostgreSQL
-	_, err := r.db.NewInsert().Model(artifact).Exec(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to save artifact: %w", err)
-	}
-
-	// Если Elasticsearch доступен, индексируем и там
-	if r.elastic != nil {
-		artifactJSON, err := json.Marshal(artifact)
-		if err != nil {
-			return err
-		}
-
-		_, err = r.elastic.Index(
-			"windows-artifacts",
-			bytes.NewReader(artifactJSON),
-			r.elastic.Index.WithContext(ctx),
-			r.elastic.Index.WithDocumentID(fmt.Sprintf("%s", artifact.UUID)),
-		)
-		if err != nil {
-			log.Printf("Warning: Failed to index artifact in Elasticsearch: %v", err)
-		}
-	}
-
-	return nil
-}
-
-// Проверяет наличие столбца threat_level в таблице
-func (r *ArtifactRepository) hasThreatLevelColumn(ctx context.Context) bool {
-	// Проверяем наличие столбца в информационной схеме PostgreSQL
-	var exists bool
-	err := r.db.NewRaw(`
-        SELECT EXISTS (
-            SELECT 1 
-            FROM information_schema.columns 
-            WHERE table_name = 'windows_artifacts' 
-            AND column_name = 'threat_level'
-        )
-    `).Scan(ctx, &exists)
-
-	if err != nil {
-		// В случае ошибки предполагаем, что столбца нет
-		log.Printf("Error checking threat_level column: %v", err)
-		return false
-	}
-
-	return exists
-}
-
-func (r *ArtifactRepository) SearchArtifacts(
-	ctx context.Context,
-	query string,
-	artifactType string,
-	severity string,
-	page int,
-	perPage int,
-) ([]*models.Artifact, int, error) {
-	offset := (page - 1) * perPage
-	severityMap := map[string]int{
-		"low":      1,
-		"medium":   5,
-		"high":     8,
-		"critical": 10,
-	}
-
-	if r.elastic == nil {
-		// Используем WindowsArtifact как базовую модель
-		var windowsArtifacts []*models.WindowsArtifact
-
-		q := r.db.NewSelect().
-			Model(&windowsArtifacts).
-			WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
-				return q.
-					Where("path ILIKE ?", "%"+query+"%").
-					WhereOr("value ILIKE ?", "%"+query+"%").
-					WhereOr("owner ILIKE ?", "%"+query+"%")
-			})
-
-		if artifactType != "" {
-			q = q.Where("type = ?", artifactType)
-		}
-
-		// Проверяем наличие столбца threat_level перед его использованием
-		hasThreatLevel := r.hasThreatLevelColumn(ctx)
-		if severity != "" && hasThreatLevel {
-			if level, ok := severityMap[strings.ToLower(severity)]; ok {
-				q = q.Where("threat_level >= ?", level)
-			}
-		}
-
-		// Подсчет общего количества записей
-		countQuery := q.Clone()
-		total, err := countQuery.Count(ctx)
-		if err != nil {
-			return nil, 0, fmt.Errorf("count failed: %w", err)
-		}
-
-		// Основной запрос с данными
-		err = q.
-			Order("timestamp DESC").
-			Limit(perPage).
-			Offset(offset).
-			Scan(ctx)
-		if err != nil {
-			return nil, 0, fmt.Errorf("query failed: %w", err)
-		}
-
-		// Преобразуем WindowsArtifact в Artifact
-		artifacts := make([]*models.Artifact, len(windowsArtifacts))
-		for i, wa := range windowsArtifacts {
-			artifacts[i] = &models.Artifact{
-				UUID:        wa.UUID,
-				HostID:      wa.HostID,
-				Type:        wa.Type,
-				Name:        wa.Path,
-				Path:        wa.Path,
-				Size:        wa.Size,
-				Hash:        wa.Hash,
-				Timestamp:   wa.Timestamp,
-				ThreatLevel: wa.ThreatLevel,
-			}
-		}
-
-		return artifacts, total, nil
-	}
-	// Поиск через Elasticsearch
-	esQuery := map[string]interface{}{
+	query := map[string]interface{}{
 		"query": map[string]interface{}{
-			"bool": map[string]interface{}{
-				"must": []map[string]interface{}{
-					{
-						"multi_match": map[string]interface{}{
-							"query":  query,
-							"fields": []string{"path", "value", "owner", "type"},
-							"type":   "best_fields",
-						},
-					},
+			"term": map[string]interface{}{
+				"host_id": hostID,
+			},
+		},
+		"sort": []map[string]interface{}{
+			{
+				"@timestamp": map[string]interface{}{ // Агент отправляет @timestamp
+					"order": "desc",
 				},
 			},
 		},
+		"from": from,
+		"size": perPage,
 	}
 
-	// Добавляем фильтры в ES запрос
+	return r.search(ctx, query)
+}
+
+// GetArtifactByID получает артефакт по ID
+func (r *ArtifactRepository) GetArtifactByID(ctx context.Context, id int64) (*models.Artifact, error) {
+	idStr := fmt.Sprintf("%d", id)
+
+	query := map[string]interface{}{
+		"query": map[string]interface{}{
+			"bool": map[string]interface{}{
+				"should": []map[string]interface{}{
+					{
+						"term": map[string]interface{}{
+							"id": idStr,
+						},
+					},
+					{
+						"term": map[string]interface{}{
+							"_id": idStr,
+						},
+					},
+				},
+				"minimum_should_match": 1,
+			},
+		},
+		"size": 1,
+	}
+
+	artifacts, _, err := r.search(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(artifacts) == 0 {
+		return nil, fmt.Errorf("artifact with ID %d not found", id)
+	}
+
+	return artifacts[0], nil
+}
+
+// SearchArtifacts ищет артефакты
+func (r *ArtifactRepository) SearchArtifacts(ctx context.Context, query, artifactType, severity string, page, perPage int) ([]*models.Artifact, int, error) {
+	from := (page - 1) * perPage
+
+	// Базовый запрос
+	esQuery := map[string]interface{}{
+		"query": map[string]interface{}{
+			"bool": map[string]interface{}{
+				"must": []map[string]interface{}{},
+			},
+		},
+		"sort": []map[string]interface{}{
+			{
+				"@timestamp": map[string]interface{}{ // Сортируем по @timestamp
+					"order": "desc",
+				},
+			},
+		},
+		"from": from,
+		"size": perPage,
+	}
+
+	// Добавляем полнотекстовый поиск
+	if query != "" && query != "system" {
+		must := esQuery["query"].(map[string]interface{})["bool"].(map[string]interface{})["must"].([]map[string]interface{})
+		must = append(must, map[string]interface{}{
+			"multi_match": map[string]interface{}{
+				"query":  query,
+				"fields": []string{"type", "path", "value", "host_id", "system.*", "network.*", "security.*"},
+			},
+		})
+		esQuery["query"].(map[string]interface{})["bool"].(map[string]interface{})["must"] = must
+	}
+
+	// Добавляем фильтры
 	filters := []map[string]interface{}{}
+
+	// Фильтр по типу (ищем в разных местах)
 	if artifactType != "" {
 		filters = append(filters, map[string]interface{}{
 			"term": map[string]interface{}{
-				"type.keyword": artifactType,
+				"type": artifactType,
 			},
 		})
 	}
+
+	// Фильтр по severity
 	if severity != "" {
-		filters = append(filters, map[string]interface{}{
-			"term": map[string]interface{}{
-				"severity.keyword": severity,
-			},
-		})
+		severityMap := map[string]int{
+			"low":      1,
+			"medium":   5,
+			"high":     8,
+			"critical": 10,
+		}
+		if level, ok := severityMap[strings.ToLower(severity)]; ok {
+			// Ищем threat_level в разных местах
+			filters = append(filters, map[string]interface{}{
+				"range": map[string]interface{}{
+					"threat_level": map[string]interface{}{
+						"gte": level,
+					},
+				},
+			})
+		}
 	}
 
 	if len(filters) > 0 {
 		esQuery["query"].(map[string]interface{})["bool"].(map[string]interface{})["filter"] = filters
 	}
 
-	queryBytes, err := json.Marshal(esQuery)
-	if err != nil {
-		return nil, 0, err
+	return r.search(ctx, esQuery)
+}
+
+// SaveArtifact сохраняет артефакт
+func (r *ArtifactRepository) SaveArtifact(ctx context.Context, artifact *models.WindowsArtifact) error {
+	// Обновляем writeIndex если день изменился
+	currentIndex := "siem-logs-" + time.Now().Format("2006.01.02")
+	if currentIndex != r.writeIndex {
+		r.writeIndex = currentIndex
 	}
 
-	res, err := r.elastic.Search(
-		r.elastic.Search.WithContext(ctx),
-		r.elastic.Search.WithIndex("windows-artifacts"),
-		r.elastic.Search.WithBody(bytes.NewReader(queryBytes)),
-		r.elastic.Search.WithFrom(offset),
-		r.elastic.Search.WithSize(perPage),
+	doc := map[string]interface{}{
+		"@timestamp":   time.Now().UTC(), // Добавляем @timestamp для сортировки
+		"uuid":         artifact.UUID,
+		"host_id":      artifact.HostID,
+		"type":         artifact.Type,
+		"path":         artifact.Path,
+		"size":         artifact.Size,
+		"hash":         artifact.Hash,
+		"value":        artifact.Value,
+		"owner":        artifact.Owner,
+		"permissions":  artifact.Permissions,
+		"timestamp":    artifact.Timestamp,
+		"threat_level": artifact.ThreatLevel,
+		"created_at":   time.Now().UTC(),
+	}
+
+	data, err := json.Marshal(doc)
+	if err != nil {
+		return fmt.Errorf("failed to marshal artifact: %w", err)
+	}
+
+	res, err := r.client.Index(
+		r.writeIndex,
+		bytes.NewReader(data),
+		r.client.Index.WithContext(ctx),
+		r.client.Index.WithDocumentID(artifact.UUID),
+		r.client.Index.WithRefresh("wait_for"),
 	)
 	if err != nil {
-		return nil, 0, err
+		return fmt.Errorf("failed to index artifact: %w", err)
 	}
 	defer res.Body.Close()
 
 	if res.IsError() {
-		var e map[string]interface{}
-		if err := json.NewDecoder(res.Body).Decode(&e); err != nil {
-			return nil, 0, fmt.Errorf("error parsing elasticsearch error: %s", err)
-		}
-		return nil, 0, fmt.Errorf("elasticsearch error: %v", e)
+		return fmt.Errorf("elasticsearch error: %s", res.String())
+	}
+
+	return nil
+}
+
+// GetArtifactByUUID получает артефакт по UUID
+func (r *ArtifactRepository) GetArtifactByUUID(ctx context.Context, uuid string) (*models.Artifact, error) {
+	// Простой запрос по полю uuid
+	query := map[string]interface{}{
+		"query": map[string]interface{}{
+			"term": map[string]interface{}{
+				"uuid": uuid,
+			},
+		},
+		"size": 1,
+	}
+
+	artifacts, _, err := r.search(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(artifacts) == 0 {
+		return nil, fmt.Errorf("artifact with UUID %s not found", uuid)
+	}
+
+	return artifacts[0], nil
+}
+
+// search выполняет поиск и возвращает результаты
+func (r *ArtifactRepository) search(ctx context.Context, query map[string]interface{}) ([]*models.Artifact, int, error) {
+	queryBytes, err := json.Marshal(query)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to marshal query: %w", err)
+	}
+
+	res, err := r.client.Search(
+		r.client.Search.WithContext(ctx),
+		r.client.Search.WithIndex(r.searchIndex),
+		r.client.Search.WithBody(bytes.NewReader(queryBytes)),
+	)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to search: %w", err)
+	}
+	defer res.Body.Close()
+
+	if res.IsError() {
+		return nil, 0, fmt.Errorf("elasticsearch error: %s", res.String())
 	}
 
 	var result struct {
@@ -310,19 +290,157 @@ func (r *ArtifactRepository) SearchArtifacts(
 				Value int `json:"value"`
 			} `json:"total"`
 			Hits []struct {
-				Source *models.Artifact `json:"_source"`
+				Source map[string]interface{} `json:"_source"`
 			} `json:"hits"`
 		} `json:"hits"`
 	}
 
 	if err := json.NewDecoder(res.Body).Decode(&result); err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	artifacts := make([]*models.Artifact, len(result.Hits.Hits))
-	for i, hit := range result.Hits.Hits {
-		artifacts[i] = hit.Source
+	artifacts := make([]*models.Artifact, 0, len(result.Hits.Hits))
+	for _, hit := range result.Hits.Hits {
+		artifact := r.convertToArtifact(hit.Source)
+		if artifact != nil {
+			artifacts = append(artifacts, artifact)
+		}
 	}
 
-	return []*models.Artifact{}, 0, nil
+	return artifacts, result.Hits.Total.Value, nil
+}
+
+// convertToArtifact конвертирует Elasticsearch документ в Artifact
+func (r *ArtifactRepository) convertToArtifact(source map[string]interface{}) *models.Artifact {
+	artifact := &models.Artifact{
+		UUID:      getString(source, "uuid"), // Берем UUID из поля uuid
+		HostID:    getString(source, "host_id"),
+		Type:      getString(source, "type"),
+		Name:      getString(source, "path"),
+		Path:      getString(source, "path"),
+		Size:      getInt64(source, "size"),
+		Hash:      getString(source, "hash"),
+		Timestamp: getTime(source, "timestamp"), // Используем поле timestamp
+	}
+
+	// Если есть threat_level
+	if threat, ok := source["threat_level"].(float64); ok {
+		artifact.ThreatLevel = int(threat)
+	}
+
+	// Если это данные от Linux агента (system, network, security)
+	if system, ok := source["system"].(map[string]interface{}); ok {
+		artifact.Name = "system"
+		artifact.Type = "system"
+		artifact.ThreatLevel = calculateThreatLevel(system)
+
+		// Если host_id нет в корне, берем из system
+		if artifact.HostID == "" {
+			if hostID, ok := system["host_id"].(string); ok {
+				artifact.HostID = hostID
+			}
+		}
+
+		// Если timestamp нет в корне, берем из system
+		if artifact.Timestamp.IsZero() {
+			if ts, ok := system["timestamp"].(string); ok {
+				if t, err := time.Parse(time.RFC3339, ts); err == nil {
+					artifact.Timestamp = t
+				}
+			}
+		}
+	}
+
+	if network, ok := source["network"].(map[string]interface{}); ok {
+		artifact.Name = "network"
+		artifact.Type = "network"
+		artifact.ThreatLevel = calculateNetworkThreatLevel(network)
+
+		if artifact.HostID == "" {
+			if hostID, ok := network["host_id"].(string); ok {
+				artifact.HostID = hostID
+			}
+		}
+	}
+
+	if security, ok := source["security"].(map[string]interface{}); ok {
+		artifact.Name = "security"
+		artifact.Type = "security"
+		artifact.ThreatLevel = calculateThreatLevel(security)
+
+		if artifact.HostID == "" {
+			if hostID, ok := security["host_id"].(string); ok {
+				artifact.HostID = hostID
+			}
+		}
+	}
+
+	return artifact
+}
+
+// Вспомогательная функция для getTime
+func getTime(m map[string]interface{}, key string) time.Time {
+	if val, ok := m[key]; ok {
+		switch v := val.(type) {
+		case string:
+			if t, err := time.Parse(time.RFC3339, v); err == nil {
+				return t
+			}
+		case time.Time:
+			return v
+		}
+	}
+	return time.Now()
+}
+
+// Вспомогательные функции
+func getString(m map[string]interface{}, key string) string {
+	if val, ok := m[key]; ok {
+		if str, ok := val.(string); ok {
+			return str
+		}
+	}
+	return ""
+}
+
+func getInt64(m map[string]interface{}, key string) int64 {
+	if val, ok := m[key]; ok {
+		switch v := val.(type) {
+		case float64:
+			return int64(v)
+		case int64:
+			return v
+		}
+	}
+	return 0
+}
+
+func calculateThreatLevel(system map[string]interface{}) int {
+	level := 0
+
+	if cpu, ok := system["cpu_usage"].(float64); ok && cpu > 90 {
+		level += 3
+	}
+
+	if mem, ok := system["memory_percent"].(float64); ok && mem > 90 {
+		level += 3
+	}
+
+	return level
+}
+
+func calculateNetworkThreatLevel(network map[string]interface{}) int {
+	level := 0
+
+	if conns, ok := network["connections"].([]interface{}); ok {
+		for _, conn := range conns {
+			if c, ok := conn.(map[string]interface{}); ok {
+				if status, ok := c["status"].(string); ok && status != "ESTABLISHED" {
+					level += 1
+				}
+			}
+		}
+	}
+
+	return level
 }

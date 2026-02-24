@@ -2,3 +2,4 @@
 frontend-core/node_modules/
 backend/config/config.yaml
 nginx/
+linux-agent/configs/agent.yaml

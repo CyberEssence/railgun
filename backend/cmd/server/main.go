@@ -66,7 +66,22 @@ func main() {
 
 	// Инициализация репозиториев
 	trafficRepo := repository.NewTrafficRepository(db, cfg.Elastic.URL)
-	artifactRepo := repository.NewArtifactRepository(db, cfg.Elastic.URL)
+	// Подключаемся к Elasticsearch если настроен
+	var elasticAddrs []string
+	if cfg.Elastic.URL != "" {
+		elasticAddrs = []string{cfg.Elastic.URL}
+	}
+
+	// Создаем репозиторий артефактов с Elasticsearch
+	artifactRepo, err := repository.NewArtifactRepository(
+		elasticAddrs,
+		cfg.Elastic.Username,
+		cfg.Elastic.Password,
+		"siem-logs-*", // Имя индекса
+	)
+	if err != nil {
+		log.Fatal("Failed to create artifact repository:", err)
+	}
 	userRepo := repository.NewUserRepository(db)
 	incidentRepo := repository.NewIncidentRepository(db)
 	detEngine := engine.NewDetector(cfg.Detection, incidentRepo)
