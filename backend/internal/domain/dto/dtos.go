@@ -4,7 +4,7 @@ import "time"
 
 // WindowsArtifact представляет системный артефакт Windows
 type WindowsArtifactDTO struct {
-	ID          int64                  `json:"id"`
+	UUID        string                 `json:"id"`
 	HostID      string                 `json:"host_id"`
 	Timestamp   time.Time              `json:"timestamp"`
 	Type        string                 `json:"type"`

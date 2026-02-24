@@ -83,10 +83,10 @@ func (h *AIHandler) GetAttackPatterns(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"data": patterns,
 		"meta": gin.H{
-			"total":       total,
-			"page":        page,
-			"per_page":    perPage,
-			"total_pages": (total + perPage - 1) / perPage,
+			"total":      total,
+			"page":       page,
+			"perPage":    perPage,
+			"totalPages": (total + perPage - 1) / perPage,
 		},
 	})
 }
@@ -112,7 +112,7 @@ func (h *AIHandler) ExecuteCounterAttack(c *gin.Context) {
 	}
 
 	// Проверяем права пользователя (в реальном приложении)
-	userID, exists := c.Get("user_id")
+	userID, exists := c.Get("userId")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
@@ -120,12 +120,12 @@ func (h *AIHandler) ExecuteCounterAttack(c *gin.Context) {
 
 	// Логируем действие
 	c.Set("audit_log", map[string]interface{}{
-		"action":      "execute_counter_attack",
-		"user_id":     userID,
-		"target_ip":   request.TargetIP,
-		"attack_type": request.AttackType,
-		"intensity":   request.Intensity,
-		"timestamp":   time.Now(),
+		"action":     "execute_counter_attack",
+		"userId":     userID,
+		"targetIp":   request.TargetIP,
+		"attackType": request.AttackType,
+		"intensity":  request.Intensity,
+		"timestamp":  time.Now(),
 	})
 
 	// Выполняем контратаку
@@ -136,9 +136,9 @@ func (h *AIHandler) ExecuteCounterAttack(c *gin.Context) {
 	}*/
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":     "Counter-attack initiated successfully",
-		"target_ip":   request.TargetIP,
-		"attack_type": request.AttackType,
+		"message":    "Counter-attack initiated successfully",
+		"targetIp":   request.TargetIP,
+		"attackType": request.AttackType,
 	})
 }
 
@@ -156,7 +156,7 @@ func (h *AIHandler) ExecuteCounterAttack(c *gin.Context) {
 // @Router       /ai/apt-timeline [get]
 func (h *AIHandler) GetAPTTimeline(c *gin.Context) {
 	// Получаем параметры запроса
-	hostID := c.Query("host_id")
+	hostID := c.Query("hostId")
 	if hostID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Host ID is required"})
 		return
@@ -247,7 +247,7 @@ func (h *AIHandler) TrainModel(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Training job started",
-		"job_id":  jobID,
+		"jobId":   jobID,
 	})
 }
 

@@ -1,0 +1,67 @@
+{
+  "index_patterns": ["siem-logs-*", "system-metrics-*", "network-logs-*"],
+  "template": {
+    "settings": {
+      "number_of_shards": 2,
+      "number_of_replicas": 1,
+      "index.refresh_interval": "5s",
+      "index.lifecycle.name": "siem_policy"
+    },
+    "mappings": {
+      "dynamic_templates": [
+        {
+          "strings_as_keyword": {
+            "match_mapping_type": "string",
+            "mapping": {
+              "type": "keyword"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "@timestamp": {
+          "type": "date"
+        },
+        "host": {
+          "properties": {
+            "id": { "type": "keyword" },
+            "name": { "type": "keyword" },
+            "ip": { "type": "ip" }
+          }
+        },
+        "system": {
+          "properties": {
+            "cpu_usage": { "type": "float" },
+            "memory_percent": { "type": "float" },
+            "load_average": { "type": "float" }
+          }
+        },
+        "network": {
+          "properties": {
+            "connections": {
+              "properties": {
+                "remote_addr": { "type": "ip" },
+                "local_port": { "type": "integer" },
+                "status": { "type": "keyword" }
+              }
+            }
+          }
+        },
+        "event": {
+          "properties": {
+            "type": { "type": "keyword" },
+            "severity": { "type": "keyword" },
+            "module": { "type": "keyword" }
+          }
+        },
+        "geoip": {
+          "properties": {
+            "country_name": { "type": "keyword" },
+            "city_name": { "type": "keyword" },
+            "location": { "type": "geo_point" }
+          }
+        }
+      }
+    }
+  }
+}

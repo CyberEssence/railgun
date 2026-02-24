@@ -1,9 +1,11 @@
 package models
 
 import (
+	"encoding/json"
 	"railgun-core/internal/domain/dto"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 )
 
@@ -99,24 +101,24 @@ type NetworkTraffic struct {
 type WindowsArtifact struct {
 	bun.BaseModel `bun:"table:windows_artifacts,alias:wa"`
 
-	ID          int64                  `bun:"id,pk,autoincrement" json:"id"`
-	HostID      string                 `bun:"host_id,notnull" json:"host_id"`
-	Timestamp   time.Time              `bun:"timestamp,notnull" json:"timestamp"`
-	Type        string                 `bun:"type,notnull" json:"type"`
-	Path        string                 `bun:"path" json:"path"`
-	Value       string                 `bun:"value" json:"value"`
-	Size        int64                  `bun:"size" json:"size"`
-	Hash        string                 `bun:"hash" json:"hash"`
-	Owner       string                 `bun:"owner" json:"owner"`
-	Permissions string                 `bun:"permissions" json:"permissions"`
-	Metadata    map[string]interface{} `bun:"metadata,type:jsonb" json:"metadata"`
-	ThreatLevel int                    `bun:"threat_level" json:"threat_level"`
+	ID          int64     `json:"-" bun:"id,pk,autoincrement"`
+	UUID        string    `json:"id" bun:"uuid"` // UUID для публичного API
+	HostID      string    `json:"host_id" bun:"host_id"`
+	Type        string    `json:"type" bun:"type"`
+	Path        string    `json:"path" bun:"path"`
+	Size        int64     `json:"size" bun:"size"`
+	Hash        string    `json:"hash" bun:"hash"`
+	Value       string    `json:"value,omitempty" bun:"value"`
+	Owner       string    `json:"owner,omitempty" bun:"owner"`
+	Permissions string    `json:"permissions,omitempty" bun:"permissions"`
+	Timestamp   time.Time `json:"timestamp" bun:"timestamp"`
+	ThreatLevel int       `json:"threat_level" bun:"threat_level"`
 }
 
 // ToWindowsArtifactDTO() преобразует модель в DTO для API
 func (w *WindowsArtifact) ToWindowsArtifactDTO() dto.WindowsArtifactDTO {
 	return dto.WindowsArtifactDTO{
-		ID:          w.ID,
+		UUID:        w.UUID,
 		HostID:      w.HostID,
 		Timestamp:   w.Timestamp,
 		Type:        w.Type,
@@ -126,27 +128,36 @@ func (w *WindowsArtifact) ToWindowsArtifactDTO() dto.WindowsArtifactDTO {
 		Hash:        w.Hash,
 		Owner:       w.Owner,
 		Permissions: w.Permissions,
-		Metadata:    w.Metadata,
 		ThreatLevel: w.ThreatLevel,
 	}
 }
 
-// User представляет пользователя системы
-type User struct {
-	bun.BaseModel `bun:"table:users"`
+// BeforeInsert генерирует UUID перед вставкой
+func (w *WindowsArtifact) BeforeInsert() {
+	if w.UUID == "" {
+		w.UUID = uuid.New().String()
+	}
+	if w.Timestamp.IsZero() {
+		w.Timestamp = time.Now().UTC()
+	}
+}
 
-	ID           int64  `bun:"id,pk,autoincrement"`
+type User struct {
+	bun.BaseModel `bun:"table:users,alias:u"`
+
+	ID           string `bun:"id,pk,type:uuid,default:uuid_generate_v4()"`
 	Username     string `bun:"username,unique,notnull"`
 	Email        string `bun:"email,unique,notnull"`
-	PasswordHash string `bun:"password_hash,notnull" json:"-"`
+	PasswordHash string `bun:"password_hash,notnull"`
 
-	TOTPSecret      string `bun:"totp_secret"`
-	TOTPEnabled     bool   `bun:"totp_enabled,default:false"`
-	TOTPBackupCodes string `bun:"totp_backup_codes"` // Просто string без type:jsonb
+	TOTPSecret  string `bun:"totp_secret"`
+	TOTPEnabled bool   `bun:"totp_enabled,default:false"`
 
-	CreatedAt time.Time `bun:"created_at,default:current_timestamp"`
-	UpdatedAt time.Time `bun:"updated_at,default:current_timestamp"`
+	TOTPBackupCodes json.RawMessage `bun:"totp_backup_codes,type:jsonb"`
+
 	IsActive  bool      `bun:"is_active,default:true"`
+	CreatedAt time.Time `bun:"created_at,nullzero,notnull,default:current_timestamp"`
+	UpdatedAt time.Time `bun:"updated_at,nullzero,notnull,default:current_timestamp"`
 	LastLogin time.Time `bun:"last_login"`
 }
 
@@ -155,7 +166,7 @@ type TwoFAToken struct {
 	bun.BaseModel `bun:"table:two_fa_tokens,alias:t"`
 
 	ID        int64     `bun:"id,pk,autoincrement" json:"id"`
-	UserID    int64     `bun:"user_id,notnull" json:"user_id"`
+	UserID    string    `bun:"user_id,notnull" json:"user_id"`
 	TokenHash string    `bun:"token_hash,notnull" json:"-"`
 	ExpiresAt time.Time `bun:"expires_at,notnull" json:"expires_at"`
 	Used      bool      `bun:"used,notnull,default:false" json:"used"`
@@ -332,16 +343,16 @@ type AnalysisResult struct {
 }
 
 type Artifact struct {
-	ID          int64     `json:"id"`
-	HostID      string    `json:"host_id"`
-	Type        string    `json:"type"` // file, registry, process и т.д.
-	Name        string    `json:"name"`
-	Path        string    `json:"path"`
-	Size        int64     `json:"size"`
-	Hash        string    `json:"hash"`
-	Timestamp   time.Time `json:"timestamp"`
-	ThreatLevel int       `json:"threat_level"`
-	Content     []byte    `json:"content,omitempty"`
+	UUID        string    `json:"id" bun:"uuid,pk"` // UUID как первичный ключ
+	HostID      string    `json:"host_id" bun:"host_id"`
+	Type        string    `json:"type" bun:"type"`
+	Name        string    `json:"name" bun:"name"`
+	Path        string    `json:"path" bun:"path"`
+	Size        int64     `json:"size" bun:"size"`
+	Hash        string    `json:"hash" bun:"hash"`
+	Timestamp   time.Time `json:"timestamp" bun:"timestamp"`
+	ThreatLevel int       `json:"threat_level" bun:"threat_level"`
+	Content     []byte    `json:"content,omitempty" bun:"content,omitempty"`
 }
 
 type ThreatStats struct {
@@ -386,18 +397,19 @@ type LoginResponse struct {
 
 // TokenResponse - ответ с JWT токенами
 type TokenResponse struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
-	ExpiresIn    int    `json:"expires_in"`
-	TokenType    string `json:"token_type"`
+	AccessToken  string `json:"accessToken"`
+	RefreshToken string `json:"refreshToken"`
+	ExpiresIn    int    `json:"expiresIn"`
+	TokenType    string `json:"tokenType"`
 }
 
 type EventCorrelation struct {
-	Type      string    `json:"type"`      // например, "login_attempt" или "network_flow"
-	SourceIP  string    `json:"source_ip"` // IP атакующего или источника трафика
-	HostID    string    `json:"host_id"`   // Идентификатор хоста (ДОБАВЛЕНО)
-	Success   bool      `json:"success"`   // успешно или нет
-	Timestamp time.Time `json:"timestamp"`
+	Type      string                 `json:"type"`      // например, "login_attempt" или "network_flow"
+	SourceIP  string                 `json:"source_ip"` // IP атакующего или источника трафика
+	HostID    string                 `json:"host_id"`   // Идентификатор хоста (ДОБАВЛЕНО)
+	Success   bool                   `json:"success"`   // успешно или нет
+	Timestamp time.Time              `json:"timestamp"`
+	Data      map[string]interface{} `json:"data,omitempty"`
 }
 
 type Incident struct {

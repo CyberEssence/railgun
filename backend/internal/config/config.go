@@ -1,12 +1,12 @@
 package config
 
 type Config struct {
-	Server      ServerConfig
-	Database    DatabaseConfig
-	Elastic     ElasticConfig
-	Integration IntegrationConfig
-	Security    SecurityConfig
-	Auth        AuthConfig
-	Detection   DetectionConfig
-	JWTConfig   JWTConfig `yaml:"security"`
+	Server      ServerConfig      `yaml:"server"`
+	Database    DatabaseConfig    `yaml:"database"`
+	Elastic     ElasticConfig     `yaml:"elastic"`
+	Integration IntegrationConfig `yaml:"integration"`
+	Security    SecurityConfig    `yaml:"security"`
+	Auth        AuthConfig        `yaml:"auth"`
+	Detection   DetectionConfig   `yaml:"detection"`
+	JWTConfig   JWTConfig         `yaml:"jwt"`
 }

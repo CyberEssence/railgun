@@ -34,7 +34,7 @@ func NewIntegrationService(config IntegrationConfig) domain.IntegrationService {
 }
 
 func (s *IntegrationService) ScanWithVirusTotal(ctx context.Context, fileReader io.Reader, fileSize int64) (*models.ScanResult, error) {
-	// 1. Проверка размера (уже по числу, а не по хедеру)
+	// Проверка размера (уже по числу, а не по хедеру)
 	if fileSize > int64(s.config.MaxFileSize) {
 		return nil, fmt.Errorf("file too large: %d bytes (max %d bytes)", fileSize, s.config.MaxFileSize)
 	}
@@ -43,7 +43,7 @@ func (s *IntegrationService) ScanWithVirusTotal(ctx context.Context, fileReader 
 		return nil, fmt.Errorf("VirusTotal API key not configured")
 	}
 
-	// 2. Создаем multipart форму
+	// Создаем multipart форму
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 
@@ -53,7 +53,7 @@ func (s *IntegrationService) ScanWithVirusTotal(ctx context.Context, fileReader 
 		return nil, fmt.Errorf("failed to create form file: %w", err)
 	}
 
-	// 3. Копируем данные из Reader в форму
+	// Копируем данные из Reader в форму
 	_, err = io.Copy(part, fileReader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to copy file: %w", err)

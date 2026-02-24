@@ -105,7 +105,7 @@ export const AuthProvider = ({ children }) => {
       throw error;
     }
   };
-
+  
   // Включение 2FA
   const enable2FA = async () => {
     try {
@@ -125,7 +125,10 @@ export const AuthProvider = ({ children }) => {
         throw new Error(errorData.error || 'Failed to enable 2FA');
       }
 
-      return await response.json();
+      const data = await response.json();
+      
+      return data;
+      
     } catch (error) {
       console.error('Enable 2FA error:', error);
       throw error;
@@ -138,12 +141,6 @@ export const AuthProvider = ({ children }) => {
       const userToken = user?.token;
       if (!userToken) throw new Error('Not authenticated');
 
-      console.log('🔐 Sending 2FA setup verification request...', {
-        url: `${API_BASE_URL}/api/auth/2fa/verify-setup`,
-        tokenLength: token?.length,
-        authToken: userToken.substring(0, 20) + '...'
-      });
-
       const response = await fetch(`${API_BASE_URL}/api/auth/2fa/verify-setup`, {
         method: 'POST',
         headers: {
@@ -153,30 +150,34 @@ export const AuthProvider = ({ children }) => {
         body: JSON.stringify({ token }),
       });
 
-      console.log('Response received:', {
-        status: response.status,
-        statusText: response.statusText,
-        ok: response.ok
-      });
-
       if (!response.ok) {
-        // Пытаемся получить ошибку в JSON формате
-        let errorMessage = `HTTP ${response.status}`;
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.error || errorData.message || errorMessage;
-        } catch (e) {
-          // Если не JSON, читаем как текст
-          const text = await response.text();
-          errorMessage = text || errorMessage;
-        }
-        throw new Error(errorMessage);
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to verify 2FA setup');
       }
 
       const data = await response.json();
-      console.log('Verify setup success:', data);
+      console.log('Server response:', data);
       
-      // Возвращаем полные данные для обновления состояния
+      // Обновляем только поле 2FA, но сохраняем username
+      const updatedUser = {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        token: user.token,
+        refreshToken: user.refreshToken,
+        expiresIn: user.expiresIn,
+        totpEnabled: true,
+        // Добавляем остальные данные от сервера, но без перезаписи username
+        ...data,
+      };
+      
+      if (updatedUser.username !== user.username) {
+        updatedUser.username = user.username;
+      }
+      
+      setUser(updatedUser);
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      
       return {
         success: true,
         data: data,

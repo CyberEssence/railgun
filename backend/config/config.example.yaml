@@ -1,3 +1,61 @@
+server:
+  port: 8080
+  mode: release
+  read_timeout: 30s
+  write_timeout: 30s
+
+database:
+  url: ${DATABASE_URL}
+  max_open_conns: 25
+  max_idle_conns: 10
+  conn_max_lifetime: 300s
+
+elasticsearch:
+  urls:
+    - http://elasticsearch:9200
+  username: ""
+  password: ""
+  insecure: true
+  sniff: false
+  healthcheck: true
+
+redis:
+  url: ${REDIS_URL}
+  max_retries: 3
+  pool_size: 10
+
+jwt:
+  secret: ${JWT_SECRET}
+  expiry: 24h
+  refresh_expiry: 168h
+
+encryption:
+  key: ${ENCRYPTION_KEY}
+
+detection:
+  brute_force:
+    threshold: ${DETECTION_BF_THRESHOLD}
+    window_sec: ${DETECTION_BF_WINDOW_SEC}
+  anomaly:
+    enabled: true
+    sensitivity: 0.8
+
+kafka:
+  enabled: ${KAFKA_ENABLED}
+  brokers: ${KAFKA_BROKERS}
+  topic: siem-logs
+  consumer_group: railgun-consumer
+
+agents:
+  heartbeat_interval: 60s
+  offline_threshold: 300s
+  max_pending_batch: 1000
+
+logging:
+  level: info
+  output: stdout
+  format: json
+
 security:
   encryption_key: ""
   issuer: "Railgun SIEM"

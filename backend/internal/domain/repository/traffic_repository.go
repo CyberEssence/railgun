@@ -1,4 +1,4 @@
-package persistence
+package repository
 
 import (
 	"bytes"
@@ -115,7 +115,7 @@ func (r *TrafficRepository) SaveTraffic(ctx context.Context, traffic models.Netw
 			"network-traffic",
 			bytes.NewReader(trafficJSON),
 			r.elastic.Index.WithContext(ctx),
-			r.elastic.Index.WithDocumentID(fmt.Sprintf("%d", traffic.ID)),
+			r.elastic.Index.WithDocumentID(fmt.Sprintf("%s", traffic.ID)),
 		)
 		if err != nil {
 			log.Printf("Warning: Failed to index traffic in Elasticsearch: %v", err)
@@ -166,7 +166,7 @@ func (r *TrafficRepository) ProcessNetworkLog(ctx context.Context, hostID, logDa
 			"network-logs",
 			bytes.NewReader(logJSON),
 			r.elastic.Index.WithContext(ctx),
-			r.elastic.Index.WithDocumentID(fmt.Sprintf("%d", parsedLog.ID)),
+			r.elastic.Index.WithDocumentID(fmt.Sprintf("%s", parsedLog.ID)),
 		)
 		if err != nil {
 			log.Printf("Warning: Failed to index log in Elasticsearch: %v", err)

@@ -2,7 +2,9 @@ package api
 
 import (
 	"context"
+	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	"railgun-core/internal/domain"
@@ -14,17 +16,47 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type AgentMonitor struct {
+	agents map[string]*AgentStatus
+	mu     sync.RWMutex
+}
+
+type AgentStatus struct {
+	HostID      string    `json:"host_id"`
+	Hostname    string    `json:"hostname"`
+	LastSeen    time.Time `json:"last_seen"`
+	MetricsSent int64     `json:"metrics_sent"`
+	LastError   string    `json:"last_error,omitempty"`
+	Online      bool      `json:"online"`
+	Version     string    `json:"version,omitempty"`
+	IPAddress   string    `json:"ip_address,omitempty"`
+	AgentType   string    `json:"agent_type"`
+}
+
+func NewAgentMonitor() *AgentMonitor {
+	return &AgentMonitor{
+		agents: make(map[string]*AgentStatus),
+	}
+}
+
 type IngestHandler struct {
 	trafficRepo    repository.TrafficRepository
 	networkLogRepo domain.NetworkLogRepository
 	engine         domain.DetectionEngine
+	agentMonitor   *AgentMonitor
 }
 
-func NewIngestHandler(tr repository.TrafficRepository, nl domain.NetworkLogRepository, de domain.DetectionEngine) *IngestHandler {
+func NewIngestHandler(
+	tr repository.TrafficRepository,
+	nl domain.NetworkLogRepository,
+	de domain.DetectionEngine,
+	monitor *AgentMonitor) *IngestHandler {
+
 	return &IngestHandler{
 		trafficRepo:    tr,
 		networkLogRepo: nl,
 		engine:         de,
+		agentMonitor:   monitor,
 	}
 }
 
@@ -50,13 +82,13 @@ func (h *IngestHandler) SaveTraffic(c *gin.Context) {
 		traffic.Timestamp = time.Now()
 	}
 
-	// 1. Сохраняем в БД
+	// Сохраняем в БД
 	if err := h.trafficRepo.SaveTraffic(c.Request.Context(), traffic); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	// 2. СРАЗУ отправляем в Engine для корреляции (асинхронно)
+	// СРАЗУ отправляем в Engine для корреляции (асинхронно)
 	go h.engine.AddEvent(context.Background(), models.EventCorrelation{
 		Type:      "network_flow",
 		SourceIP:  traffic.SrcIP,
@@ -180,4 +212,238 @@ func (h *IngestHandler) GetTrafficStats(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, stats)
+}
+
+func (h *IngestHandler) ProcessAgentData(c *gin.Context) {
+	var payload struct {
+		HostID string        `json:"host_id"`
+		Events []interface{} `json:"events"`
+	}
+
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	log.Printf("Received %d events from host %s", len(payload.Events), payload.HostID)
+
+	// Обработка разных типов событий
+	for _, event := range payload.Events {
+		eventMap, ok := event.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		eventType, _ := eventMap["type"].(string)
+
+		switch eventType {
+		case "system_info":
+			h.processSystemInfo(eventMap, payload.HostID)
+		case "network_info":
+			h.processNetworkInfo(eventMap, payload.HostID)
+		case "security_info":
+			h.processSecurityInfo(eventMap, payload.HostID)
+		case "process_info":
+			h.processProcessInfo(eventMap, payload.HostID)
+		}
+	}
+
+	// Анализ в реальном времени
+	go h.analyzeRealtime(payload.HostID, payload.Events)
+
+	c.JSON(http.StatusOK, gin.H{"status": "processed", "count": len(payload.Events)})
+}
+
+func (h *IngestHandler) processSystemInfo(data map[string]interface{}, hostID string) {
+	// Сохранение в Elasticsearch
+	//indexName := "system-metrics-" + time.Now().Format("2006.01.02")
+
+	doc := map[string]interface{}{
+		"@timestamp": data["timestamp"],
+		"host": map[string]interface{}{
+			"id":   hostID,
+			"name": data["hostname"],
+		},
+		"system": data,
+		"event": map[string]interface{}{
+			"type":   "metrics",
+			"module": "system",
+		},
+	}
+
+	// Сохранение в БД SIEM
+	h.saveToDatabase("system_metrics", doc)
+
+	// Проверка на аномалии
+	h.checkForAnomalies(doc)
+}
+
+func (m *AgentMonitor) UpdateStatus(hostID, hostname string, metricsSent int, agentInfo ...map[string]string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	status, exists := m.agents[hostID]
+	if !exists {
+		status = &AgentStatus{
+			HostID:    hostID,
+			Hostname:  hostname,
+			LastSeen:  time.Now(),
+			Online:    true,
+			AgentType: "linux",
+		}
+		m.agents[hostID] = status
+	}
+
+	status.LastSeen = time.Now()
+	status.MetricsSent += int64(metricsSent)
+	status.Online = true
+
+	if len(agentInfo) > 0 {
+		if ip, ok := agentInfo[0]["ip"]; ok {
+			status.IPAddress = ip
+		}
+		if version, ok := agentInfo[0]["version"]; ok {
+			status.Version = version
+		}
+	}
+}
+
+func (m *AgentMonitor) SetError(hostID, errorMsg string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if status, exists := m.agents[hostID]; exists {
+		status.LastError = errorMsg
+	}
+}
+
+func (m *AgentMonitor) SetOffline(hostID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if status, exists := m.agents[hostID]; exists {
+		status.Online = false
+	}
+}
+
+func (m *AgentMonitor) GetAllStatus() []*AgentStatus {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	result := make([]*AgentStatus, 0, len(m.agents))
+	for _, status := range m.agents {
+		// Проверяем, если агент не активен более 5 минут
+		if time.Since(status.LastSeen) > 5*time.Minute {
+			status.Online = false
+		}
+		result = append(result, status)
+	}
+
+	return result
+}
+
+func (m *AgentMonitor) GetAgentStatus(hostID string) (*AgentStatus, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	status, exists := m.agents[hostID]
+	return status, exists
+}
+
+func (h *IngestHandler) GetAgentsStatus(c *gin.Context) {
+	status := h.agentMonitor.GetAllStatus()
+	c.JSON(http.StatusOK, gin.H{
+		"agents": status,
+		"total":  len(status),
+		"online": countOnline(status),
+	})
+}
+
+func countOnline(agents []*AgentStatus) int {
+	count := 0
+	for _, agent := range agents {
+		if agent.Online {
+			count += 1
+		}
+	}
+	return count
+}
+
+func (h *IngestHandler) saveToDatabase(indexName string, doc map[string]interface{}) {
+	// Реализация сохранения в базу данных (Elasticsearch, PostgreSQL и т.д.)
+	log.Printf("Saving to %s: %v", indexName, doc)
+}
+
+func (h *IngestHandler) checkForAnomalies(doc map[string]interface{}) {
+	// Проверка на аномалии в данных
+	// Например, проверка значений CPU, памяти, диска
+	// Можно интегрировать с h.engine
+}
+
+func (h *IngestHandler) processNetworkInfo(data map[string]interface{}, hostID string) {
+	// Обработка сетевой информации
+	doc := map[string]interface{}{
+		"@timestamp": data["timestamp"],
+		"host": map[string]interface{}{
+			"id": hostID,
+		},
+		"network": data,
+		"event": map[string]interface{}{
+			"type":   "metrics",
+			"module": "network",
+		},
+	}
+	h.saveToDatabase("network_metrics", doc)
+}
+
+func (h *IngestHandler) processSecurityInfo(data map[string]interface{}, hostID string) {
+	// Обработка информации о безопасности
+	doc := map[string]interface{}{
+		"@timestamp": data["timestamp"],
+		"host": map[string]interface{}{
+			"id": hostID,
+		},
+		"security": data,
+		"event": map[string]interface{}{
+			"type":   "security",
+			"module": "threat_intel",
+		},
+	}
+	h.saveToDatabase("security_events", doc)
+}
+
+func (h *IngestHandler) processProcessInfo(data map[string]interface{}, hostID string) {
+	// Обработка информации о процессах
+	doc := map[string]interface{}{
+		"@timestamp": data["timestamp"],
+		"host": map[string]interface{}{
+			"id": hostID,
+		},
+		"process": data,
+		"event": map[string]interface{}{
+			"type":   "process",
+			"module": "system",
+		},
+	}
+	h.saveToDatabase("process_events", doc)
+}
+
+func (h *IngestHandler) analyzeRealtime(hostID string, events []interface{}) {
+	// Анализ данных в реальном времени
+	for _, event := range events {
+		eventMap, ok := event.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		// Здесь можно добавить логику анализа
+		// Например, проверка на подозрительную активность
+		// и отправка событий в движок корреляции
+		h.engine.AddEvent(context.Background(), models.EventCorrelation{
+			Type:      "agent_data",
+			HostID:    hostID,
+			Timestamp: time.Now(),
+			Data:      eventMap,
+		})
+	}
 }

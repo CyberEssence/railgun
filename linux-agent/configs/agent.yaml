@@ -1,0 +1,21 @@
+host_id: ""  # Автогенерация если пусто
+hostname: "" # Автогенерация если пусто
+
+collector:
+  system: true
+  network: true
+  processes: false  # Отключено по умолчанию из-за нагрузки
+  security: true
+  docker: false
+  interval: 30s
+  batch_size: 50
+
+elastic:
+  enabled: true
+  urls:
+    - "http://localhost:9200"
+  username: "elastic"
+  password: ""
+  index: "siem-logs-v2-%{+yyyy.MM.dd}"
+
+log_level: "info"
