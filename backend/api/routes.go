@@ -78,7 +78,7 @@ func RegisterRoutes(
 
 		// Артефакты
 		apiGroup.GET("/artifacts/host/:hostId", artifactHandler.GetArtifactsByHost)
-		apiGroup.GET("/artifacts/id/:id", artifactHandler.GetArtifactByID)
+		apiGroup.GET("/artifacts/uuid/:uuid", artifactHandler.GetArtifactByUUID)
 		apiGroup.POST("/artifacts", artifactHandler.SaveArtifact)
 		apiGroup.GET("/artifacts/search", artifactHandler.SearchArtifacts)
 

@@ -241,11 +241,11 @@ func (r *ArtifactRepository) SaveArtifact(ctx context.Context, artifact *models.
 
 // GetArtifactByUUID получает артефакт по UUID
 func (r *ArtifactRepository) GetArtifactByUUID(ctx context.Context, uuid string) (*models.Artifact, error) {
-	// Простой запрос по полю uuid
+
 	query := map[string]interface{}{
 		"query": map[string]interface{}{
-			"term": map[string]interface{}{
-				"uuid": uuid,
+			"query_string": map[string]interface{}{
+				"query": uuid,
 			},
 		},
 		"size": 1,

@@ -49,24 +49,10 @@ func (h *ArtifactHandler) GetArtifactsByHost(c *gin.Context) {
 	})
 }
 
-func (h *ArtifactHandler) GetArtifactByID(c *gin.Context) {
-	idStr := c.Param("id")
+func (h *ArtifactHandler) GetArtifactByUUID(c *gin.Context) {
+	uuid := c.Param("uuid")
 
-	// Пробуем как UUID
-	artifact, err := h.artifactRepo.GetArtifactByUUID(c, idStr)
-	if err == nil {
-		c.JSON(http.StatusOK, artifact)
-		return
-	}
-
-	// Если не нашли по UUID, пробуем как число (для обратной совместимости)
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Artifact not found"})
-		return
-	}
-
-	artifact, err = h.artifactRepo.GetArtifactByID(c, id)
+	artifact, err := h.artifactRepo.GetArtifactByUUID(c, uuid)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Artifact not found"})
 		return

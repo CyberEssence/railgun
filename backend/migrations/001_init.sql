@@ -68,7 +68,9 @@ CREATE TABLE IF NOT EXISTS incidents (
     source_ip VARCHAR(45),
     threat_level INT,
     description TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Индексы для incidents
@@ -87,7 +89,8 @@ CREATE TABLE IF NOT EXISTS artifacts (
     size BIGINT,
     metadata JSONB DEFAULT '{}',
     tags TEXT[],
-    incident_id UUID REFERENCES incidents(id),
+    --incident_id UUID REFERENCES incidents(id),
+    incident_id BIGINT REFERENCES incidents(id),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -147,7 +150,8 @@ CREATE TABLE IF NOT EXISTS alerts (
     severity VARCHAR(20) NOT NULL,
     status VARCHAR(20) DEFAULT 'active',
     pattern_id UUID REFERENCES attack_patterns(id),
-    incident_id UUID REFERENCES incidents(id),
+    --incident_id UUID REFERENCES incidents(id),
+    incident_id BIGINT REFERENCES incidents(id),
     host_id VARCHAR(100),
     count INTEGER DEFAULT 1,
     first_seen TIMESTAMP WITH TIME ZONE,
