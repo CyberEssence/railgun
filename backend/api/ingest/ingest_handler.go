@@ -188,7 +188,6 @@ func (h *IngestHandler) GetTrafficStats(c *gin.Context) {
 		return
 	}
 
-	// Получаем параметры запроса
 	fromStr := c.DefaultQuery("from", time.Now().Add(-24*time.Hour).Format(time.RFC3339))
 	toStr := c.DefaultQuery("to", time.Now().Format(time.RFC3339))
 
@@ -204,8 +203,7 @@ func (h *IngestHandler) GetTrafficStats(c *gin.Context) {
 		return
 	}
 
-	// Получаем статистику
-	stats, err := h.trafficRepo.GetTrafficStats(c, hostID, from, to)
+	stats, err := h.trafficRepo.GetTrafficStats(c.Request.Context(), hostID, from, to)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

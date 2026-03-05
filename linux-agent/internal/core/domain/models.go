@@ -99,6 +99,7 @@ type Port struct {
 	Port     int32  `json:"port"`
 	Protocol string `json:"protocol"`
 	Process  string `json:"process"`
+	Address  string `json:"address"`
 	PID      int32  `json:"pid"`
 }
 

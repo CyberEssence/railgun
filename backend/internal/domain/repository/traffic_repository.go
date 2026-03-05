@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/elastic/go-elasticsearch/v8"
+	"github.com/elastic/go-elasticsearch/v8/esapi"
 	"github.com/uptrace/bun"
 
 	"railgun-core/internal/domain/models"
@@ -62,39 +63,107 @@ func (r *TrafficRepository) GetTrafficByHost(ctx context.Context, hostID string,
 	return traffic, err
 }
 
+// GetTrafficStats получает статистику трафика из Elasticsearch
 func (r *TrafficRepository) GetTrafficStats(ctx context.Context, hostID string, from, to time.Time) (*models.TrafficStats, error) {
-	var stats struct {
-		TotalBytesSent   int64   `bun:"total_bytes_sent"`
-		TotalBytesRecv   int64   `bun:"total_bytes_recv"`
-		TotalPacketsSent int64   `bun:"total_packets_sent"`
-		TotalPacketsRecv int64   `bun:"total_packets_recv"`
-		AverageDuration  float64 `bun:"average_duration"`
+	var buf bytes.Buffer
+
+	query := map[string]interface{}{
+		"size": 0, // Не возвращаем сами документы, только агрегации
+		"query": map[string]interface{}{
+			"bool": map[string]interface{}{
+				"must": []map[string]interface{}{
+					// Фильтр по Host ID
+					{"term": map[string]interface{}{"host.id": hostID}},
+					// Фильтр по типу документа (чтобы не считать file/log)
+					{"exists": map[string]interface{}{"field": "network.bandwidth"}},
+					// Фильтр по времени
+					{"range": map[string]interface{}{
+						"@timestamp": map[string]interface{}{
+							"gte": from.Format(time.RFC3339),
+							"lte": to.Format(time.RFC3339),
+						},
+					}},
+				},
+			},
+		},
+		"aggs": map[string]interface{}{
+			"total_sent": map[string]interface{}{
+				"sum": map[string]interface{}{"field": "network.bandwidth.bytes_sent"},
+			},
+			"total_recv": map[string]interface{}{
+				"sum": map[string]interface{}{"field": "network.bandwidth.bytes_recv"},
+			},
+			"total_pkts_sent": map[string]interface{}{
+				"sum": map[string]interface{}{"field": "network.bandwidth.packets_sent"},
+			},
+			"total_pkts_recv": map[string]interface{}{
+				"sum": map[string]interface{}{"field": "network.bandwidth.packets_recv"},
+			},
+		},
 	}
 
-	query := `
-        SELECT 
-            COALESCE(SUM(bytes_sent), 0) as total_bytes_sent,
-            COALESCE(SUM(bytes_recv), 0) as total_bytes_recv,
-            COALESCE(SUM(packets_sent), 0) as total_packets_sent,
-            COALESCE(SUM(packets_recv), 0) as total_packets_recv,
-            COALESCE(AVG(duration), 0) as average_duration
-        FROM network_traffic
-        WHERE host_id = ? AND timestamp BETWEEN ? AND ?
-    `
+	if err := json.NewEncoder(&buf).Encode(query); err != nil {
+		return nil, fmt.Errorf("failed to encode query: %w", err)
+	}
 
-	err := r.db.NewRaw(query, hostID, from, to).Scan(ctx, &stats)
+	// Выполняем запрос к ES
+	// Используем индекс siem-logs-* для охвата всех дат
+	req := esapi.SearchRequest{
+		Index: []string{"siem-logs-*"},
+		Body:  &buf,
+	}
+
+	res, err := req.Do(ctx, r.elastic)
 	if err != nil {
-		return nil, fmt.Errorf("query failed: %w", err)
+		return nil, fmt.Errorf("failed to search ES: %w", err)
+	}
+	defer res.Body.Close()
+
+	if res.IsError() {
+		var e map[string]interface{}
+		if err := json.NewDecoder(res.Body).Decode(&e); err != nil {
+			return nil, fmt.Errorf("ES error response parsing failed: %s", res.String())
+		}
+		return nil, fmt.Errorf("ES error: %v", e)
 	}
 
-	// Копируем значения в результат
-	return &models.TrafficStats{
-		TotalBytesSent:   stats.TotalBytesSent,
-		TotalBytesRecv:   stats.TotalBytesRecv,
-		TotalPacketsSent: stats.TotalPacketsSent,
-		TotalPacketsRecv: stats.TotalPacketsRecv,
-		AverageDuration:  stats.AverageDuration,
-	}, nil
+	// Парсим ответ
+	var esResp struct {
+		Aggregations struct {
+			TotalSent struct {
+				Value float64 `json:"value"`
+			} `json:"total_sent"`
+			TotalRecv struct {
+				Value float64 `json:"value"`
+			} `json:"total_recv"`
+			TotalPktsSent struct {
+				Value float64 `json:"value"`
+			} `json:"total_pkts_sent"`
+			TotalPktsRecv struct {
+				Value float64 `json:"value"`
+			} `json:"total_pkts_recv"`
+		} `json:"aggregations"`
+		// Hits тоже парсим, чтобы проверить, есть ли вообще данные
+		Hits struct {
+			Total struct {
+				Value int64 `json:"value"`
+			} `json:"total"`
+		} `json:"hits"`
+	}
+
+	if err := json.NewDecoder(res.Body).Decode(&esResp); err != nil {
+		return nil, fmt.Errorf("failed to decode ES response: %w", err)
+	}
+
+	// Формируем результат
+	stats := &models.TrafficStats{
+		TotalBytesSent:   int64(esResp.Aggregations.TotalSent.Value),
+		TotalBytesRecv:   int64(esResp.Aggregations.TotalRecv.Value),
+		TotalPacketsSent: int64(esResp.Aggregations.TotalPktsSent.Value),
+		TotalPacketsRecv: int64(esResp.Aggregations.TotalPktsRecv.Value),
+	}
+
+	return stats, nil
 }
 
 func (r *TrafficRepository) SaveTraffic(ctx context.Context, traffic models.NetworkTraffic) error {
