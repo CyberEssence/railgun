@@ -102,8 +102,8 @@ func (h *IngestHandler) SaveTraffic(c *gin.Context) {
 
 type NetworkLogRequest struct {
 	HostID  string `json:"host_id" binding:"required"`
-	LogData string `json:"log_data" binding:"required"`
 	LogType string `json:"log_type" binding:"required"`
+	LogData string `json:"log_data" binding:"required"`
 }
 
 // ProcessNetworkLog godoc

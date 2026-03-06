@@ -194,17 +194,16 @@ func (r *TrafficRepository) SaveTraffic(ctx context.Context, traffic models.Netw
 	return nil
 }
 
-func (r *TrafficRepository) ProcessNetworkLog(ctx context.Context, hostID, logData, logType string) ([]models.NetworkTraffic, error) {
+func (r *TrafficRepository) ProcessNetworkLog(ctx context.Context, hostID, logData, logType string) ([]models.NetworkLog, error) {
 	// Парсим входные данные в структуру NetworkLog
 	parsedLog := models.NetworkLog{
-		SourceIP:  "", // Будет заполнено из logData
+		SourceIP:  "",
 		LogType:   logType,
 		RawData:   logData,
 		Timestamp: time.Now(),
-		Severity:  "info", // По умолчанию
+		Severity:  "info",
 	}
 
-	// Простая логика парсинга (в реальном приложении будет сложнее)
 	// Предполагаем, что logData содержит строки вида "src_ip=X.X.X.X dst_ip=Y.Y.Y.Y"
 	if strings.Contains(logData, "src_ip=") {
 		parts := strings.Split(logData, " ")
@@ -219,33 +218,31 @@ func (r *TrafficRepository) ProcessNetworkLog(ctx context.Context, hostID, logDa
 	}
 
 	// Сохраняем в PostgreSQL
-	_, err := r.db.NewInsert().Model(&parsedLog).Exec(ctx)
+	err := r.db.NewInsert().Model(&parsedLog).Scan(ctx, &parsedLog.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to save log to database: %w", err)
 	}
 
 	// Если Elasticsearch доступен, индексируем и там
 	if r.elastic != nil {
-		logJSON, err := json.Marshal(parsedLog)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal log for Elasticsearch: %w", err)
+		logJSON, _ := json.Marshal(parsedLog)
+		req := esapi.IndexRequest{
+			Index:      "network-logs",
+			Body:       bytes.NewReader(logJSON),
+			DocumentID: fmt.Sprintf("%s", parsedLog.ID),
+			Refresh:    "true",
 		}
-
-		_, err = r.elastic.Index(
-			"network-logs",
-			bytes.NewReader(logJSON),
-			r.elastic.Index.WithContext(ctx),
-			r.elastic.Index.WithDocumentID(fmt.Sprintf("%s", parsedLog.ID)),
-		)
+		res, err := req.Do(ctx, r.elastic)
 		if err != nil {
 			log.Printf("Warning: Failed to index log in Elasticsearch: %v", err)
 		}
+		defer res.Body.Close()
 	}
 
 	// Возвращаем связанные записи трафика
-	var relatedTraffic []models.NetworkTraffic
+	var recentLogs []models.NetworkLog
 	err = r.db.NewSelect().
-		Model(&relatedTraffic).
+		Model(&recentLogs).
 		Where("host_id = ?", hostID).
 		Where("timestamp > ?", time.Now().Add(-1*time.Hour)).
 		Order("timestamp DESC").
@@ -253,10 +250,10 @@ func (r *TrafficRepository) ProcessNetworkLog(ctx context.Context, hostID, logDa
 		Scan(ctx)
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to get related traffic: %w", err)
+		return []models.NetworkLog{}, nil
 	}
 
-	return relatedTraffic, nil
+	return []models.NetworkLog{parsedLog}, nil
 }
 
 // Вспомогательная функция для парсинга лога

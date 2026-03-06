@@ -13,6 +13,7 @@ type TrafficRepository interface {
 	GetTrafficByHost(ctx context.Context, hostID string, from, to time.Time) ([]models.NetworkTraffic, error)
 	SaveTraffic(ctx context.Context, traffic models.NetworkTraffic) error
 	GetTrafficStats(ctx context.Context, hostID string, from, to time.Time) (*models.TrafficStats, error)
+	ProcessNetworkLog(ctx context.Context, hostID, logData, logType string) ([]models.NetworkLog, error)
 }
 
 // AnalyticsRepository - для графиков и дашбордов
@@ -27,7 +28,7 @@ type HostActionRepository interface {
 }
 
 type NetworkLogRepository interface {
-	ProcessNetworkLog(ctx context.Context, hostID, logData, logType string) ([]models.NetworkTraffic, error)
+	ProcessNetworkLog(ctx context.Context, hostID, logData, logType string) ([]models.NetworkLog, error)
 }
 
 // ArtifactRepository интерфейс для работы с артефактами

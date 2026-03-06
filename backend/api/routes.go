@@ -102,7 +102,7 @@ func RegisterRoutes(
 		apiGroup.GET("/incidents", incidentHandler.GetIncidents)
 
 		apiGroup.POST("/traffic", ingestHandler.SaveTraffic)
-		apiGroup.POST("traffic/logs", ingestHandler.ProcessNetworkLog)
+		apiGroup.POST("/traffic/logs", ingestHandler.ProcessNetworkLog)
 
 		apiGroup.GET("/traffic/:hostId", queryHandler.GetTrafficByHost)
 		apiGroup.GET("/traffic/heatmap", queryHandler.GetThreatHeatmap)
