@@ -27,9 +27,11 @@ func LoadConfig() (*Config, error) {
 		Elastic: ElasticConfig{
 			URL: getEnv("ELASTIC_URL", ""),
 		},
-		Integration: IntegrationConfig{
+		VirusTotal: IntegrationConfig{
 			VirusTotalAPIKey: getEnv("VIRUSTOTAL_API_KEY", ""),
-			MaxFileSizeMB:    getEnvAsInt("MAX_FILE_SIZE", 32<<20), // 32MB по умолчанию
+			MaxFileSizeMB:    getEnvAsInt64("MAX_FILE_SIZE", 32<<20), // 32MB по умолчанию
+			PollInterval:     getEnvDuration("POLL_INTERVAL", 5*time.Second),
+			PollTimeout:      getEnvDuration("POLL_TIMEOUT", 2*time.Minute),
 		},
 		Security: SecurityConfig{
 			WhitelistIPs: strings.Split(getEnv("WHITELIST_IPS", "127.0.0.1/32,10.0.0.0/8"), ","),
@@ -44,17 +46,14 @@ func LoadConfig() (*Config, error) {
 	if cfg.Database.DSN == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required but not set in .env")
 	}
-	/*if cfg.Auth.Secret == "" {
-		log.Println("WARNING: JWT_SECRET is not set, using default for development only")
-	}*/
 
 	cfg.Detection = DetectionConfig{
 		BruteForceThreshold: getEnvAsInt("DETECTION_BF_THRESHOLD", 10),
 		BruteForceWindow:    time.Duration(getEnvAsInt("DETECTION_BF_WINDOW_SEC", 60)) * time.Second,
 	}
 
-	if cfg.JWTConfig.Issuer == "" {
-		cfg.JWTConfig.Issuer = "Railgun SIEM"
+	if cfg.Auth.IssuerURL == "" {
+		cfg.Auth.IssuerURL = "Railgun SIEM"
 	}
 
 	return cfg, nil
@@ -87,6 +86,26 @@ func getEnvAsInt(key string, defaultValue int) int {
 	if value, exists := os.LookupEnv(key); exists {
 		if intValue, err := strconv.Atoi(value); err == nil {
 			return intValue
+		}
+	}
+	return defaultValue
+}
+
+// getEnvAsInt64 получает числовое значение int64 переменной окружения
+func getEnvAsInt64(key string, defaultValue int64) int64 {
+	if value, exists := os.LookupEnv(key); exists {
+		if intValue, err := strconv.ParseInt(value, 10, 64); err == nil {
+			return intValue
+		}
+	}
+	return defaultValue
+}
+
+// getEnvDuration получает значение duration переменной окружения
+func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
+	if value, exists := os.LookupEnv(key); exists {
+		if duration, err := time.ParseDuration(value); err == nil {
+			return duration
 		}
 	}
 	return defaultValue

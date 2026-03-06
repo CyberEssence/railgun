@@ -21,16 +21,19 @@ func SetupServices(db *bun.DB, config *config.Config) *Services {
 	userRepo := repository.NewUserRepository(db)
 	incidentRepo := repository.NewIncidentRepository(db)
 
-	// Инициализируем Engine
 	detEngine := engine.NewDetector(config.Detection, incidentRepo)
 
+	integrationCfg := services.IntegrationConfig{
+		VirusTotalAPIKey: config.VirusTotal.VirusTotalAPIKey,
+		MaxFileSize:      config.VirusTotal.MaxFileSizeMB * 1024 * 1024,
+		PollTimeout:      config.VirusTotal.PollTimeout,
+		PollInterval:     config.VirusTotal.PollInterval,
+	}
+
 	return &Services{
-		AIService: services.NewAIService(db),
-		IntegrationService: services.NewIntegrationService(services.IntegrationConfig{
-			VirusTotalAPIKey: config.Integration.VirusTotalAPIKey,
-			MaxFileSize:      config.Integration.MaxFileSizeMB * 1024 * 1024,
-		}),
-		TwoFAService:    services.NewTwoFAService(userRepo, config),
-		DetectionEngine: detEngine,
+		AIService:          services.NewAIService(db),
+		IntegrationService: services.NewIntegrationService(integrationCfg),
+		TwoFAService:       services.NewTwoFAService(userRepo, config),
+		DetectionEngine:    detEngine,
 	}
 }

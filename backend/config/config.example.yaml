@@ -61,3 +61,10 @@ security:
   issuer: "Railgun SIEM"
   totp_period: 30
   totp_digits: 6
+
+virustotal:
+  # вставь свой ключ VirusTotal :)
+  api_key: ""
+  max_file_size: 33554432
+  poll_interval: 5s
+  poll_timeout: 2m

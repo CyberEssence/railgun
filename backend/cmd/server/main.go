@@ -89,8 +89,8 @@ func main() {
 	// Инициализация сервисов
 	aiService := services.NewAIService(db)
 	integrationService := services.NewIntegrationService(services.IntegrationConfig{
-		VirusTotalAPIKey: cfg.Integration.VirusTotalAPIKey,
-		MaxFileSize:      cfg.Integration.MaxFileSizeMB,
+		VirusTotalAPIKey: cfg.VirusTotal.VirusTotalAPIKey,
+		MaxFileSize:      cfg.VirusTotal.MaxFileSizeMB,
 	})
 	twoFAService := services.NewTwoFAService(userRepo, cfg)
 

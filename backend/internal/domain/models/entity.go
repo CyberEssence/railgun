@@ -281,25 +281,6 @@ type APTEpoch struct {
 	Indicator string `json:"indicator"`
 }
 
-// ScanResult результат сканирования файла
-type ScanResult struct {
-	Data struct {
-		ID         string `json:"id"`
-		Attributes struct {
-			Status  string `json:"status"`
-			Results map[string]struct {
-				Category string `json:"category"`
-				Result   string `json:"result"`
-			} `json:"results"`
-			Stats struct {
-				Malicious  int `json:"malicious"`
-				Suspicious int `json:"suspicious"`
-				Undetected int `json:"undetected"`
-			} `json:"stats"`
-		} `json:"attributes"`
-	} `json:"data"`
-}
-
 // DashboardStats статистика для дашборда
 type DashboardStats struct {
 	TotalEvents        int    `json:"totalEvents"`
@@ -433,4 +414,46 @@ func (w *Incident) ToIncidentDTO() dto.IncidentDTO {
 		Description: w.Description,
 		CreatedAt:   w.CreatedAt,
 	}
+}
+
+// ScanResult — корневая структура ответа
+type ScanResult struct {
+	Data struct {
+		ID         string         `json:"id"`
+		Type       string         `json:"type"`
+		Links      Links          `json:"links"`
+		Attributes ScanAttributes `json:"attributes"`
+	} `json:"data"`
+}
+
+type Links struct {
+	Self string `json:"self"`
+}
+
+type ScanAttributes struct {
+	Status  string            `json:"status"`
+	Stats   Stats             `json:"stats"`
+	Results map[string]Engine `json:"results"`
+}
+
+type Stats struct {
+	Malicious  int `json:"malicious"`
+	Suspicious int `json:"suspicious"`
+	Undetected int `json:"undetected"`
+	Harmless   int `json:"harmless"`
+	Timeout    int `json:"timeout"`
+}
+
+type Engine struct {
+	Category string `json:"category"`
+	Result   string `json:"result"`
+	Method   string `json:"method"`
+	Engine   string `json:"engine"`
+}
+
+type VirusTotal struct {
+	VirusTotalAPIKey string
+	MaxFileSize      int64
+	PollTimeout      time.Duration
+	PollInterval     time.Duration
 }
