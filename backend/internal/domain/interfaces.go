@@ -94,3 +94,12 @@ type IncidentRepository interface {
 	SaveIncident(ctx context.Context, incident *models.Incident) error
 	GetLatestIncidents(ctx context.Context, limit int) ([]models.Incident, error)
 }
+
+type AgentService interface {
+	// Получить ожидающую задачу для хоста
+	GetPendingTask(ctx context.Context, hostID string) (*models.IsolationTask, error)
+	// Обновить статус задачи
+	UpdateTaskStatus(ctx context.Context, taskID int64, status string, output string) error
+	// Обновить статус хоста
+	UpdateHostStatus(ctx context.Context, hostID string, status string) error
+}

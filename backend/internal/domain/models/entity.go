@@ -5,7 +5,6 @@ import (
 	"railgun-core/internal/domain/dto"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 )
 
@@ -70,13 +69,21 @@ type Event struct {
 
 // Host представляет систему Windows
 type Host struct {
-	ID          string    `json:"id"`
-	Hostname    string    `json:"hostname"`
-	IPAddress   string    `json:"ip_address"`
-	LastSeen    time.Time `json:"last_seen"`
-	OSVersion   string    `json:"os_version"`
-	Status      string    `json:"status"`
-	Description string    `json:"description"`
+	bun.BaseModel `bun:"table:hosts,alias:h"`
+	ID            string                 `bun:"id,pk" json:"id"`
+	HostID        string                 `bun:"host_id,unique" json:"host_id"`
+	Hostname      string                 `bun:"hostname" json:"hostname"`
+	IPAddresses   []string               `bun:"ip_addresses,type:text[]" json:"ip_addresses"`
+	OSVersion     string                 `bun:"os" json:"os_version"`
+	Platform      string                 `bun:"platform" json:"platform"`
+	Kernel        string                 `bun:"kernel" json:"kernel"`
+	AgentVersion  string                 `bun:"agent_version" json:"agent_version"`
+	Status        string                 `bun:"status" json:"status"`
+	LastSeen      time.Time              `bun:"last_seen" json:"last_seen"`
+	Description   string                 `bun:"-" json:"description"`
+	CreatedAt     time.Time              `bun:"created_at" json:"created_at"`
+	UpdatedAt     time.Time              `bun:"updated_at" json:"updated_at"`
+	Labels        map[string]interface{} `bun:"labels,type:jsonb" json:"labels"`
 }
 
 // NetworkTraffic представляет запись о сетевом трафике
@@ -102,7 +109,7 @@ type WindowsArtifact struct {
 	bun.BaseModel `bun:"table:windows_artifacts,alias:wa"`
 
 	ID          int64     `json:"-" bun:"id,pk,autoincrement"`
-	UUID        string    `json:"id" bun:"uuid"` // UUID для публичного API
+	UUID        string    `json:"id" bun:"uuid,notnull"`
 	HostID      string    `json:"host_id" bun:"host_id"`
 	Type        string    `json:"type" bun:"type"`
 	Path        string    `json:"path" bun:"path"`
@@ -115,31 +122,16 @@ type WindowsArtifact struct {
 	ThreatLevel int       `json:"threat_level" bun:"threat_level"`
 }
 
-// ToWindowsArtifactDTO() преобразует модель в DTO для API
-func (w *WindowsArtifact) ToWindowsArtifactDTO() dto.WindowsArtifactDTO {
-	return dto.WindowsArtifactDTO{
-		UUID:        w.UUID,
-		HostID:      w.HostID,
-		Timestamp:   w.Timestamp,
-		Type:        w.Type,
-		Path:        w.Path,
-		Value:       w.Value,
-		Size:        w.Size,
-		Hash:        w.Hash,
-		Owner:       w.Owner,
-		Permissions: w.Permissions,
-		ThreatLevel: w.ThreatLevel,
-	}
-}
+type IsolationTask struct {
+	bun.BaseModel `bun:"table:isolation_tasks,alias:t"`
 
-// BeforeInsert генерирует UUID перед вставкой
-func (w *WindowsArtifact) BeforeInsert() {
-	if w.UUID == "" {
-		w.UUID = uuid.New().String()
-	}
-	if w.Timestamp.IsZero() {
-		w.Timestamp = time.Now().UTC()
-	}
+	ID          int64      `bun:"id,pk,autoincrement" json:"id"`
+	HostID      string     `bun:"host_id" json:"host_id"`
+	Action      string     `bun:"action" json:"action"`
+	Status      string     `bun:"status" json:"status"`
+	Output      string     `bun:"output" json:"output"`
+	CreatedAt   time.Time  `bun:"created_at" json:"created_at"`
+	CompletedAt *time.Time `bun:"completed_at" json:"completed_at"`
 }
 
 type User struct {
@@ -231,6 +223,21 @@ type RealtimeDetectionRequest struct {
 // IsolationRequest запрос на изоляцию хоста
 type IsolationRequest struct {
 	HostID string `json:"host_id" binding:"required"`
+}
+
+// IsolationEvent хранит историю изоляций для аудита
+type IsolationEvent struct {
+	ID        int64     `bun:"id,pk,autoincrement" json:"id"`
+	HostID    string    `bun:"host_id,notnull" json:"host_id"`
+	Reason    string    `bun:"reason" json:"reason"`
+	Duration  int       `bun:"duration" json:"duration"`
+	Status    string    `bun:"status,default:'active'" json:"status"`
+	CreatedAt time.Time `bun:"created_at,default:current_timestamp" json:"created_at"`
+}
+
+// TableName задает имя таблицы в БД для библиотеки bun
+func (IsolationEvent) TableName() string {
+	return "isolation_events"
 }
 
 // CounterAttackRequest запрос на контратаку

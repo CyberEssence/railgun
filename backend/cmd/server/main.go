@@ -22,6 +22,7 @@ import (
 	engine "railgun-core/internal/engine/detection"
 	services "railgun-core/internal/infrastructure/collectors"
 	persistence "railgun-core/internal/infrastructure/persistence"
+	"railgun-core/internal/usecase"
 )
 
 // @securityDefinitions.apikey BearerAuth
@@ -74,6 +75,7 @@ func main() {
 
 	// Создаем репозиторий артефактов с Elasticsearch
 	artifactRepo, err := repository.NewArtifactRepository(
+		db,
 		elasticAddrs,
 		cfg.Elastic.Username,
 		cfg.Elastic.Password,
@@ -84,6 +86,7 @@ func main() {
 	}
 	userRepo := repository.NewUserRepository(db)
 	incidentRepo := repository.NewIncidentRepository(db)
+	agentRepo := repository.NewAgentRepository(db)
 	detEngine := engine.NewDetector(cfg.Detection, incidentRepo)
 
 	// Инициализация сервисов
@@ -93,6 +96,7 @@ func main() {
 		MaxFileSize:      cfg.VirusTotal.MaxFileSizeMB,
 	})
 	twoFAService := services.NewTwoFAService(userRepo, cfg)
+	agentService := usecase.NewAgentService(agentRepo)
 
 	// Настройка Gin
 	r := gin.Default()
@@ -122,6 +126,7 @@ func main() {
 		trafficRepo,
 		detEngine,
 		trafficRepo,
+		*agentService,
 	)
 
 	// Запуск сервера

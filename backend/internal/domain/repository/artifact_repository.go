@@ -11,17 +11,18 @@ import (
 	"railgun-core/internal/domain/models"
 
 	"github.com/elastic/go-elasticsearch/v8"
+	"github.com/google/uuid"
+	"github.com/uptrace/bun"
 )
 
-// ArtifactRepository реализует интерфейс для работы с артефактами через Elasticsearch
 type ArtifactRepository struct {
 	client      *elasticsearch.Client
-	searchIndex string // для поиска используем паттерн
-	writeIndex  string // для записи используем конкретный индекс
+	searchIndex string
+	writeIndex  string
+	db          *bun.DB
 }
 
-// NewArtifactRepository создает новый репозиторий
-func NewArtifactRepository(addresses []string, username, password, indexPattern string) (*ArtifactRepository, error) {
+func NewArtifactRepository(db *bun.DB, addresses []string, username, password, indexPattern string) (*ArtifactRepository, error) {
 	cfg := elasticsearch.Config{
 		Addresses: addresses,
 		Username:  username,
@@ -54,6 +55,7 @@ func NewArtifactRepository(addresses []string, username, password, indexPattern 
 		client:      client,
 		searchIndex: searchIndex,
 		writeIndex:  "siem-logs-" + time.Now().Format("2006.01.02"),
+		db:          db,
 	}, nil
 }
 
@@ -191,16 +193,36 @@ func (r *ArtifactRepository) SearchArtifacts(ctx context.Context, query, artifac
 	return r.search(ctx, esQuery)
 }
 
-// SaveArtifact сохраняет артефакт
+// SaveArtifact сохраняет артефакт в ElasticSearch и PostgreSQL
 func (r *ArtifactRepository) SaveArtifact(ctx context.Context, artifact *models.WindowsArtifact) error {
+	if artifact.UUID == "" {
+		artifact.UUID = uuid.New().String()
+	}
+
+	if artifact.Timestamp.IsZero() {
+		artifact.Timestamp = time.Now().UTC()
+	}
+
+	// Вставка в Postgres
+	_, err := r.db.NewInsert().
+		Model(artifact).
+		Exec(ctx)
+
+	if err != nil {
+		return fmt.Errorf("failed to insert artifact to postgres: %w", err)
+	}
+
 	// Обновляем writeIndex если день изменился
 	currentIndex := "siem-logs-" + time.Now().Format("2006.01.02")
 	if currentIndex != r.writeIndex {
 		r.writeIndex = currentIndex
 	}
 
+	docID := uuid.New().String()
+
 	doc := map[string]interface{}{
-		"@timestamp":   time.Now().UTC(), // Добавляем @timestamp для сортировки
+		"@timestamp":   time.Now().UTC(),
+		"pg_id":        artifact.ID,
 		"uuid":         artifact.UUID,
 		"host_id":      artifact.HostID,
 		"type":         artifact.Type,
@@ -212,23 +234,22 @@ func (r *ArtifactRepository) SaveArtifact(ctx context.Context, artifact *models.
 		"permissions":  artifact.Permissions,
 		"timestamp":    artifact.Timestamp,
 		"threat_level": artifact.ThreatLevel,
-		"created_at":   time.Now().UTC(),
 	}
 
 	data, err := json.Marshal(doc)
 	if err != nil {
-		return fmt.Errorf("failed to marshal artifact: %w", err)
+		return fmt.Errorf("failed to marshal artifact for ES: %w", err)
 	}
 
 	res, err := r.client.Index(
 		r.writeIndex,
 		bytes.NewReader(data),
 		r.client.Index.WithContext(ctx),
-		r.client.Index.WithDocumentID(artifact.UUID),
+		r.client.Index.WithDocumentID(docID),
 		r.client.Index.WithRefresh("wait_for"),
 	)
 	if err != nil {
-		return fmt.Errorf("failed to index artifact: %w", err)
+		return fmt.Errorf("failed to index artifact in ES: %w", err)
 	}
 	defer res.Body.Close()
 
@@ -261,6 +282,24 @@ func (r *ArtifactRepository) GetArtifactByUUID(ctx context.Context, uuid string)
 	}
 
 	return artifacts[0], nil
+}
+
+func (r *ArtifactRepository) GetThreatsByHostID(ctx context.Context, hostID string, minLevel int) ([]models.WindowsArtifact, error) {
+	var artifacts []models.WindowsArtifact
+
+	err := r.db.NewSelect().
+		Model(&artifacts).
+		Where("host_id = ?", hostID).
+		Where("threat_level >= ?", minLevel).
+		Order("timestamp DESC").
+		Limit(10).
+		Scan(ctx)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return artifacts, nil
 }
 
 // search выполняет поиск и возвращает результаты

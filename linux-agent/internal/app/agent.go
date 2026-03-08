@@ -3,26 +3,27 @@ package app
 import (
 	"fmt"
 	"log"
+	"net/url"
+	"strings"
 	"time"
 
 	"linux-agent/internal/adapters/collectors"
 	"linux-agent/internal/adapters/config"
+	"linux-agent/internal/adapters/executor"
 	"linux-agent/internal/adapters/senders"
+	"linux-agent/internal/adapters/task_client"
 	"linux-agent/internal/core/services"
 )
 
-// Application главное приложение
 type Application struct {
-	Config   *config.Config
-	AgentSvc *services.AgentService
+	Config       *config.Config
+	AgentSvc     *services.AgentService
+	IsolationSvc *services.IsolationService
 }
 
-// New создает новое приложение
 func New(cfg *config.Config) (*Application, error) {
-	// Создаем сервис коллекторов
 	collectorSvc := services.NewCollectorService()
-
-	// Регистрируем коллекторы
+	var isolationSvc *services.IsolationService
 	if cfg.Collector.System {
 		collectorSvc.RegisterCollector(
 			collectors.NewSystemCollector(cfg.HostID, cfg.Hostname, true),
@@ -62,6 +63,31 @@ func New(cfg *config.Config) (*Application, error) {
 		return nil, logError("Failed to create Elasticsearch sender: %v", err)
 	}
 
+	if cfg.Isolation.Enabled {
+		if cfg.Isolation.ServerURL == "" {
+			return nil, fmt.Errorf("isolation is enabled but server_url is not set")
+		}
+
+		// Парсим URL чтобы получить чистый IP/Host для iptables
+		serverIP, err := extractHostFromURL(cfg.Isolation.ServerURL)
+		if err != nil {
+			log.Printf("Warning: could not parse server URL for isolation whitelist: %v", err)
+		}
+
+		fetcher := task_client.NewHTTPClient(cfg.Isolation.ServerURL)
+		exec := executor.NewFirewallExecutor()
+
+		isolationSvc = services.NewIsolationService(
+			fetcher,
+			exec,
+			cfg.HostID,
+			serverIP,
+			cfg.Isolation.PollInterval,
+		)
+	} else {
+		log.Println("Isolation service is disabled.")
+	}
+
 	// Создаем сервис агента
 	agentSvc := services.NewAgentService(
 		collectorSvc,
@@ -76,9 +102,19 @@ func New(cfg *config.Config) (*Application, error) {
 	)
 
 	return &Application{
-		Config:   cfg,
-		AgentSvc: agentSvc,
+		Config:       cfg,
+		AgentSvc:     agentSvc,
+		IsolationSvc: isolationSvc,
 	}, nil
+}
+
+func extractHostFromURL(rawURL string) (string, error) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "", err
+	}
+	host := strings.Split(u.Host, ":")[0]
+	return host, nil
 }
 
 // Start запускает приложение
@@ -97,11 +133,19 @@ func (a *Application) Start() error {
 		a.Config.Elastic.Enabled,
 	)
 
+	if a.IsolationSvc != nil {
+		a.IsolationSvc.Start()
+	}
+
 	return a.AgentSvc.Start()
 }
 
 // Stop останавливает приложение
 func (a *Application) Stop() {
+	if a.IsolationSvc != nil {
+		a.IsolationSvc.Stop()
+	}
+
 	a.AgentSvc.Stop()
 }
 

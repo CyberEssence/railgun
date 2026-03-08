@@ -18,6 +18,7 @@ type Config struct {
 	Hostname  string        `yaml:"hostname"`
 	Collector CollectorConf `yaml:"collector"`
 	Elastic   ElasticConf   `yaml:"elastic"`
+	Isolation IsolationConf `yaml:"isolation"`
 	LogLevel  string        `yaml:"log_level"`
 }
 
@@ -39,6 +40,12 @@ type ElasticConf struct {
 	Username string   `yaml:"username"`
 	Password string   `yaml:"password"`
 	Index    string   `yaml:"index" default:"siem-logs-%{+yyyy.MM.dd}"`
+}
+
+type IsolationConf struct {
+	Enabled      bool          `yaml:"enabled" default:"false"`
+	ServerURL    string        `yaml:"server_url"`
+	PollInterval time.Duration `yaml:"poll_interval" default:"10s"`
 }
 
 // Load загружает конфигурацию из файла
@@ -94,6 +101,13 @@ func LoadFromEnv() (*Config, error) {
 	config.Elastic.Password = os.Getenv("ELASTIC_PASSWORD")
 	config.Elastic.Index = getEnv("ELASTIC_INDEX", "siem-logs-%{+yyyy.MM.dd}")
 
+	// Настройки изоляции
+	config.Isolation.Enabled = getEnvBool("ISOLATION_ENABLED", false)
+	config.Isolation.ServerURL = os.Getenv("ISOLATION_SERVER_URL")
+	if config.Isolation.PollInterval == 0 {
+		config.Isolation.PollInterval = 10 * time.Second
+	}
+
 	config.setDefaults()
 	return config, nil
 }
@@ -128,6 +142,10 @@ func (c *Config) setDefaults() {
 	}
 	if c.Elastic.Index == "" {
 		c.Elastic.Index = "siem-logs-%{+yyyy.MM.dd}"
+	}
+
+	if c.Isolation.PollInterval == 0 {
+		c.Isolation.PollInterval = 10 * time.Second
 	}
 
 	// Log level

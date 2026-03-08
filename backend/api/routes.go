@@ -10,6 +10,7 @@ import (
 	"railgun-core/internal/config"
 	"railgun-core/internal/domain"
 	repository "railgun-core/internal/domain/repository"
+	"railgun-core/internal/usecase"
 
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -28,6 +29,7 @@ func RegisterRoutes(
 	networkLogRepo domain.NetworkLogRepository,
 	detectionRepo domain.DetectionEngine,
 	analyticsRepo domain.AnalyticsRepository,
+	agentUsecase usecase.AgentService,
 ) {
 
 	// Инициализация монитора агентов
@@ -42,6 +44,7 @@ func RegisterRoutes(
 	incidentHandler := web.NewIncidentHandler(incidentRepo)
 	ingestHandler := ingest.NewIngestHandler(trafficRepo, networkLogRepo, detectionRepo, agentMonitor)
 	queryHandler := web.NewQueryHandler(trafficRepo, analyticsRepo)
+	agentHandler := web.NewAgentHandler(&agentUsecase)
 
 	// Группа аутентификации
 	authGroup := r.Group("/api/auth")
@@ -106,6 +109,9 @@ func RegisterRoutes(
 
 		apiGroup.GET("/traffic/:hostId", queryHandler.GetTrafficByHost)
 		apiGroup.GET("/traffic/heatmap", queryHandler.GetThreatHeatmap)
+
+		apiGroup.GET("/agent/task", agentHandler.GetTask)
+		apiGroup.POST("/agent/report", agentHandler.ReportResult)
 	}
 
 	// Swagger UI

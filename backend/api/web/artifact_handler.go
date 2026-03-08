@@ -3,10 +3,8 @@ package api
 import (
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 
 	"railgun-core/internal/domain"
 	"railgun-core/internal/domain/models"
@@ -69,18 +67,8 @@ func (h *ArtifactHandler) SaveArtifact(c *gin.Context) {
 		return
 	}
 
-	// Генерируем UUID если не предоставлен
-	if artifact.UUID == "" {
-		artifact.UUID = uuid.New().String()
-	}
-
-	// Устанавливаем timestamp если не предоставлен
-	if artifact.Timestamp.IsZero() {
-		artifact.Timestamp = time.Now().UTC()
-	}
-
 	// Сохраняем артефакт
-	err := h.artifactRepo.SaveArtifact(c, &artifact)
+	err := h.artifactRepo.SaveArtifact(c.Request.Context(), &artifact)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -88,7 +76,7 @@ func (h *ArtifactHandler) SaveArtifact(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "Artifact saved successfully",
-		"id":      artifact.UUID, // Возвращаем UUID
+		"id":      artifact.UUID,
 	})
 }
 

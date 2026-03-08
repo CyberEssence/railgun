@@ -40,7 +40,7 @@ CREATE INDEX IF NOT EXISTS idx_two_fa_tokens_expires_at ON two_fa_tokens(expires
 
 -- Хосты (агенты)
 CREATE TABLE IF NOT EXISTS hosts (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id VARCHAR(64) PRIMARY KEY DEFAULT gen_random_uuid()::text,
     host_id VARCHAR(100) UNIQUE NOT NULL,
     hostname VARCHAR(255) NOT NULL,
     ip_addresses TEXT[],
@@ -162,6 +162,29 @@ CREATE TABLE IF NOT EXISTS alerts (
 -- Индексы для alerts
 CREATE INDEX IF NOT EXISTS idx_alerts_status ON alerts(status);
 CREATE INDEX IF NOT EXISTS idx_alerts_severity ON alerts(severity);
+
+CREATE TABLE isolation_events (
+    id BIGSERIAL PRIMARY KEY,
+    host_id VARCHAR(255) NOT NULL,
+    reason TEXT,
+    duration INTEGER,
+    status VARCHAR(50) DEFAULT 'active',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Индекс для быстрого поиска активных изоляций
+CREATE INDEX idx_isolation_events_host_id ON isolation_events(host_id);
+CREATE INDEX idx_isolation_events_status ON isolation_events(status);
+
+CREATE TABLE isolation_tasks (
+    id BIGSERIAL PRIMARY KEY,
+    host_id VARCHAR(100) NOT NULL,
+    action VARCHAR(20) NOT NULL, -- 'isolate', 'unisolate'
+    status VARCHAR(20) DEFAULT 'pending', -- 'pending', 'completed', 'failed'
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP WITH TIME ZONE,
+    output TEXT -- Лог выполнения (успех/ошибка)
+);
 
 -- Функция обновления updated_at
 CREATE OR REPLACE FUNCTION update_updated_at_column()

@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
 	"sync"
@@ -150,14 +151,19 @@ func (h *IngestHandler) IsolateHost(c *gin.Context) {
 	var request requests.IsolateHostRequest
 
 	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body: " + err.Error()})
 		return
 	}
 
-	// Изолируем хост
-	err := h.trafficRepo.IsolateHost(c, request.HostID, request.Reason, request.Duration)
+	// Вызываем метод репозитория
+	err := h.trafficRepo.IsolateHost(c.Request.Context(), request.HostID, request.Reason, request.Duration)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		// Обрабатываем ошибку "хост не найден" отдельно
+		if errors.Is(err, repository.ErrHostNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to isolate host: " + err.Error()})
 		return
 	}
 

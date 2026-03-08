@@ -3,8 +3,8 @@ package repository
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -23,6 +23,8 @@ type TrafficRepository struct {
 	db      *bun.DB
 	elastic *elasticsearch.Client
 }
+
+var ErrHostNotFound = errors.New("host not found")
 
 func NewTrafficRepository(db *bun.DB, elasticURL string) *TrafficRepository {
 	cfg := elasticsearch.Config{
@@ -284,54 +286,6 @@ func (r *TrafficRepository) getRelatedTraffic(ctx context.Context, sourceIP, des
 	return traffic, nil
 }
 
-func (r *TrafficRepository) IsolateHost(ctx context.Context, hostID string, reason string, duration int) error {
-	// Валидация входных данных
-	if hostID == "" {
-		return fmt.Errorf("invalid host ID")
-	}
-
-	// Проверяем существование хоста
-	var host models.Host
-	err := r.db.NewSelect().
-		Model(&host).
-		Where("id = ?", hostID).
-		Scan(ctx)
-
-	if err != nil {
-		if err == sql.ErrNoRows {
-			// Создаем хост, если он не существует
-			host = models.Host{
-				ID:          hostID,
-				Hostname:    "auto-created",
-				IPAddress:   "",
-				LastSeen:    time.Now(),
-				OSVersion:   "unknown",
-				Status:      "isolated", // Сразу устанавливаем статус "isolated"
-				Description: reason,
-			}
-			_, err = r.db.NewInsert().Model(&host).Exec(ctx)
-			if err != nil {
-				return fmt.Errorf("failed to create host: %w", err)
-			}
-			return nil // Хост создан и уже изолирован
-		}
-		return fmt.Errorf("host not found: %w", err)
-	}
-
-	// Обновляем статус хоста
-	_, err = r.db.NewUpdate().
-		Model(&host).
-		Set("status = ?", "isolated").
-		Where("id = ?", hostID).
-		Exec(ctx)
-
-	if err != nil {
-		return fmt.Errorf("failed to update host status: %w", err)
-	}
-
-	return nil
-}
-
 func (r *TrafficRepository) GetThreatHeatmap(ctx context.Context, from, to time.Time) ([]models.HeatmapPoint, error) {
 	// Валидация временного диапазона
 	if from.After(to) {
@@ -485,4 +439,40 @@ func getRegionFromIP(ip string) string {
 	} else {
 		return "external"
 	}
+}
+
+func (r *TrafficRepository) IsolateHost(ctx context.Context, hostID string, reason string, duration int) error {
+	if hostID == "" {
+		return fmt.Errorf("host ID cannot be empty")
+	}
+
+	// Проверяем/создаем хост
+	var host models.Host
+	err := r.db.NewSelect().Model(&host).Where("host_id = ?", hostID).Scan(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Создаем задачу на изоляцию
+	task := &models.IsolationTask{
+		HostID:    hostID,
+		Action:    "isolate",
+		Status:    "pending",
+		CreatedAt: time.Now(),
+	}
+
+	_, err = r.db.NewInsert().Model(task).Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create isolation task: %w", err)
+	}
+
+	// Обновляем статус хоста на "isolating" (в процессе)
+	_, err = r.db.NewUpdate().
+		Model(&host).
+		Set("status = ?", "isolating").
+		Set("updated_at = ?", time.Now()).
+		Where("host_id = ?", hostID).
+		Exec(ctx)
+
+	return nil
 }

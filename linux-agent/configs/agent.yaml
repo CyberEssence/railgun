@@ -19,3 +19,8 @@ elastic:
   index: "siem-logs-v2-%{+yyyy.MM.dd}"
 
 log_level: "info"
+
+isolation:
+  enabled: true
+  server_url: "http://localhost:8080/api"
+  poll_interval: 10s
