@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"sync"
@@ -74,8 +75,20 @@ func NewIngestHandler(
 // @Router       /ingest/traffic [post]
 func (h *IngestHandler) SaveTraffic(c *gin.Context) {
 	var traffic models.NetworkTraffic
+
 	if err := c.ShouldBindJSON(&traffic); err != nil {
+		// Если тело запроса пустое (EOF), возвращаем понятную ошибку
+		if errors.Is(err, io.EOF) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "request body is empty"})
+			return
+		}
+		// Остальные ошибки парсинга JSON
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if traffic.SrcIP == "" || traffic.DstIP == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "src_ip and dst_ip are required"})
 		return
 	}
 
@@ -89,14 +102,15 @@ func (h *IngestHandler) SaveTraffic(c *gin.Context) {
 		return
 	}
 
-	// СРАЗУ отправляем в Engine для корреляции (асинхронно)
-	go h.engine.AddEvent(context.Background(), models.EventCorrelation{
-		Type:      "network_flow",
-		SourceIP:  traffic.SrcIP,
-		HostID:    traffic.HostID,
-		Timestamp: traffic.Timestamp,
-		Success:   true,
-	})
+	go func(t models.NetworkTraffic) {
+		h.engine.AddEvent(context.Background(), models.EventCorrelation{
+			Type:      "network_flow",
+			SourceIP:  t.SrcIP,
+			HostID:    t.HostID,
+			Timestamp: t.Timestamp,
+			Success:   true,
+		})
+	}(traffic)
 
 	c.JSON(http.StatusCreated, gin.H{"status": "accepted"})
 }
@@ -225,11 +239,22 @@ func (h *IngestHandler) ProcessAgentData(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&payload); err != nil {
+		// Обрабатываем случай пустого тела запроса
+		if errors.Is(err, io.EOF) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "request body is empty"})
+			return
+		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
+	// Логируем и проверяем, что массив не пуст
 	log.Printf("Received %d events from host %s", len(payload.Events), payload.HostID)
+
+	if len(payload.Events) == 0 {
+		c.JSON(http.StatusOK, gin.H{"status": "accepted", "message": "no events to process"})
+		return
+	}
 
 	// Обработка разных типов событий
 	for _, event := range payload.Events {
@@ -252,8 +277,12 @@ func (h *IngestHandler) ProcessAgentData(c *gin.Context) {
 		}
 	}
 
-	// Анализ в реальном времени
-	go h.analyzeRealtime(payload.HostID, payload.Events)
+	// Анализ в реальном времени (безопасный запуск)
+	// Создаем копию слайса, чтобы избежать гонки данных, если слайс изменится извне
+	eventsCopy := make([]interface{}, len(payload.Events))
+	copy(eventsCopy, payload.Events)
+
+	go h.analyzeRealtime(payload.HostID, eventsCopy)
 
 	c.JSON(http.StatusOK, gin.H{"status": "processed", "count": len(payload.Events)})
 }
@@ -433,20 +462,28 @@ func (h *IngestHandler) processProcessInfo(data map[string]interface{}, hostID s
 }
 
 func (h *IngestHandler) analyzeRealtime(hostID string, events []interface{}) {
-	// Анализ данных в реальном времени
+	// Желательно использовать контекст с таймаутом для фоновых задач
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	for _, event := range events {
 		eventMap, ok := event.(map[string]interface{})
 		if !ok {
 			continue
 		}
 
-		// Здесь можно добавить логику анализа
-		// Например, проверка на подозрительную активность
-		// и отправка событий в движок корреляции
-		h.engine.AddEvent(context.Background(), models.EventCorrelation{
+		// Извлекаем timestamp если есть, иначе ставим текущий
+		timestamp := time.Now()
+		if ts, ok := eventMap["timestamp"].(string); ok {
+			if t, err := time.Parse(time.RFC3339, ts); err == nil {
+				timestamp = t
+			}
+		}
+
+		h.engine.AddEvent(ctx, models.EventCorrelation{
 			Type:      "agent_data",
 			HostID:    hostID,
-			Timestamp: time.Now(),
+			Timestamp: timestamp,
 			Data:      eventMap,
 		})
 	}
