@@ -10,6 +10,8 @@ require (
 	github.com/uptrace/bun/driver/pgdriver v1.2.11
 )
 
+require github.com/jinzhu/now v1.1.5 // indirect
+
 require (
 	github.com/KyleBanks/depth v1.2.1 // indirect
 	github.com/PuerkitoBio/purell v1.1.1 // indirect
@@ -73,5 +75,6 @@ require (
 	golang.org/x/text v0.23.0 // indirect
 	google.golang.org/protobuf v1.36.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
+	gorm.io/gorm v1.31.1
 	mellium.im/sasl v0.3.2 // indirect
 )

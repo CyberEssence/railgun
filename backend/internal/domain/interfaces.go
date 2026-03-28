@@ -31,6 +31,10 @@ type NetworkLogRepository interface {
 	ProcessNetworkLog(ctx context.Context, hostID, logData, logType string) ([]models.NetworkLog, error)
 }
 
+type AnalysisRepository interface {
+	Save(ctx context.Context, result *models.AnalysisResult) error
+}
+
 // ArtifactRepository интерфейс для работы с артефактами
 type ArtifactRepository interface {
 	GetArtifactsByHost(ctx context.Context, hostID string, page, perPage int) ([]*models.Artifact, int, error)
@@ -56,13 +60,14 @@ type UserRepository interface {
 }
 
 type AIService interface {
-	AnalyzeData(ctx context.Context, data []string, dataType, hostID string) (*models.AnalysisResult, error)
-	GetAttackPatterns(ctx context.Context, category, severity string, page, perPage int) ([]*models.AttackPattern, int, error)
+	AnalyzeAndSave(ctx context.Context, logLines []string, hostID string) ([]*models.AnalysisResult, error)
+	//AnalyzeData(ctx context.Context, data []string, dataType, hostID string) (*models.AnalysisResult, error)
+	/*GetAttackPatterns(ctx context.Context, category, severity string, page, perPage int) ([]*models.AttackPattern, int, error)
 	GetAPTTimeline(ctx context.Context, aptID string, startTime time.Time, endTime time.Time) (*models.APTTimeline, error)
 	UpdateModels(ctx context.Context, modelIDs []string) (map[string]string, error)
 	TrainModel(ctx context.Context, modelID, datasetPath string, epochs int) (string, error)
 	ListModels(ctx context.Context, modelType string) ([]*models.AIModel, error)
-	GetThreatStats(ctx context.Context, from time.Time, to time.Time) (*models.ThreatStats, error)
+	GetThreatStats(ctx context.Context, from time.Time, to time.Time) (*models.ThreatStats, error)*/
 }
 
 // IntegrationService - независим от протоколов (HTTP/gRPC)

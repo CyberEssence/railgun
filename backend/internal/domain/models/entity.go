@@ -321,13 +321,20 @@ type GeoInfo struct {
 	Country   string  `json:"country"`
 }
 
-// AnalysisResult результат анализа данных
+// AnalysisResult представляет запись анализа лога
 type AnalysisResult struct {
-	ThreatLevel     int       `json:"threat_level"`
-	Confidence      float64   `json:"confidence"`
-	DetectedThreats []string  `json:"detected_threats"`
-	Recommendations []string  `json:"recommendations"`
-	Timestamp       time.Time `json:"timestamp"`
+	ID           int64     `bun:"id,pk,autoincrement" json:"id"`
+	HostID       string    `bun:"host_id,type:varchar(64)" json:"host_id"`              // ID хоста или агента
+	InputData    string    `bun:"input_data,type:text" json:"input_data"`               // Сам лог
+	PredictLabel string    `bun:"predict_label,type:varchar(128)" json:"predict_label"` // Метка (Malicious/Normal)
+	Score        float64   `bun:"score,type:decimal(10,4)" json:"score"`                // Уверенность (0.0 - 1.0)
+	IsMalicious  bool      `bun:"is_malicious,type:boolean" json:"is_malicious"`        // Быстрый флаг
+	CreatedAt    time.Time `bun:"created_at,type:timestamptz,default:current_timestamp" json:"created_at"`
+}
+
+// TableName задает имя таблицы в БД для Bun
+func (AnalysisResult) TableName() string {
+	return "analysis_results"
 }
 
 type Artifact struct {

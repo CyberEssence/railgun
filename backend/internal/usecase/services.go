@@ -30,8 +30,10 @@ func SetupServices(db *bun.DB, config *config.Config) *Services {
 		PollInterval:     config.VirusTotal.PollInterval,
 	}
 
+	analysisRepo := repository.NewAnalysisRepository(db)
+
 	return &Services{
-		AIService:          services.NewAIService(db),
+		AIService:          services.NewAIService(analysisRepo),
 		IntegrationService: services.NewIntegrationService(integrationCfg),
 		TwoFAService:       services.NewTwoFAService(userRepo, config),
 		DetectionEngine:    detEngine,

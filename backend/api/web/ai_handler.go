@@ -2,7 +2,6 @@ package api
 
 import (
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -15,79 +14,28 @@ type AIHandler struct {
 	aiService domain.AIService
 }
 
-func NewAIHandler(aiService domain.AIService) *AIHandler {
-	return &AIHandler{
-		aiService: aiService,
-	}
+func NewAIHandler(svc domain.AIService) *AIHandler {
+	return &AIHandler{aiService: svc}
 }
 
-// AnalyzeRealtime godoc
-// @Summary      Выполнить AI анализ в реальном времени
-// @Description  Принимает данные, тип данных и ID хоста для мгновенного анализа нейросетью
-// @Tags         AI Analysis
-// @Accept       json
-// @Produce      json
-// @Param        request body requests.AnalyzeRealtimeRequest true "Данные для анализа"
-// @Success      200  {object}  models.AnalysisResult
-// @Failure      400  {object}  map[string]string "Ошибка валидации"
-// @Failure      500  {object}  map[string]string "Внутренняя ошибка сервера"
-// @Security     BearerAuth
-// @Router       /ai/analyze [post]
 func (h *AIHandler) AnalyzeRealtime(c *gin.Context) {
-	var request requests.AnalyzeRealtimeRequest
-
-	if err := c.ShouldBindJSON(&request); err != nil {
+	var req requests.AnalyzeRealtimeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Анализируем данные
-	result, err := h.aiService.AnalyzeData(c, request.Data, request.DataType, request.HostID)
+	// Вызываем сервис, передавая массив логов
+	results, err := h.aiService.AnalyzeAndSave(c.Request.Context(), req.Data, req.HostID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Analysis failed: " + err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, result)
-}
-
-// GetAttackPatterns godoc
-// @Summary      Получить шаблоны атак
-// @Description  Возвращает список шаблонов атак с фильтрацией и пагинацией
-// @Tags         Attack Patterns
-// @Produce      json
-// @Param        category  query  string  false  "Категория (напр. Initial Access)"
-// @Param        severity  query  string  false  "Уровень угрозы (Low, Medium, High, Critical)"
-// @Param        page      query  int     false  "Номер страницы" default(1)
-// @Param        per_page  query  int     false  "Кол-во элементов на странице" default(20)
-// @Success      200  {object}  map[string]interface{} "Объект с data (массив шаблонов) и meta (пагинация)"
-// @Failure      500  {object}  map[string]string
-// @Security     BearerAuth
-// @Router       /ai/patterns [get]
-func (h *AIHandler) GetAttackPatterns(c *gin.Context) {
-	// Получаем параметры запроса
-	category := c.Query("category")
-	severity := c.Query("severity")
-
-	// Получаем параметры пагинации
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "20"))
-
-	// Получаем шаблоны атак
-	patterns, total, err := h.aiService.GetAttackPatterns(c, category, severity, page, perPage)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
+	// Возвращаем массив результатов
 	c.JSON(http.StatusOK, gin.H{
-		"data": patterns,
-		"meta": gin.H{
-			"total":      total,
-			"page":       page,
-			"perPage":    perPage,
-			"totalPages": (total + perPage - 1) / perPage,
-		},
+		"results": results,
+		"count":   len(results),
 	})
 }
 
@@ -140,139 +88,6 @@ func (h *AIHandler) ExecuteCounterAttack(c *gin.Context) {
 		"targetIp":   request.TargetIP,
 		"attackType": request.AttackType,
 	})
-}
-
-// GetAPTTimeline godoc
-// @Summary      Временная шкала APT
-// @Description  Получает хронологию сложных устойчивых угроз (APT) для конкретного хоста
-// @Tags         AI Analysis
-// @Produce      json
-// @Param        host_id  query  string  true   "ID хоста"
-// @Param        from     query  string  false  "Начало периода (RFC3339)"
-// @Param        to       query  string  false  "Конец периода (RFC3339)"
-// @Success      200  {array}   map[string]interface{} "Массив событий таймлайна"
-// @Failure      400  {object}  map[string]string
-// @Security     BearerAuth
-// @Router       /ai/apt-timeline [get]
-func (h *AIHandler) GetAPTTimeline(c *gin.Context) {
-	// Получаем параметры запроса
-	hostID := c.Query("hostId")
-	if hostID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Host ID is required"})
-		return
-	}
-
-	fromStr := c.DefaultQuery("from", time.Now().Add(-30*24*time.Hour).Format(time.RFC3339))
-	toStr := c.DefaultQuery("to", time.Now().Format(time.RFC3339))
-
-	from, err := time.Parse(time.RFC3339, fromStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid 'from' parameter"})
-		return
-	}
-
-	to, err := time.Parse(time.RFC3339, toStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid 'to' parameter"})
-		return
-	}
-
-	// Получаем временную шкалу
-	timeline, err := h.aiService.GetAPTTimeline(c, hostID, from, to)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, timeline)
-}
-
-// UpdateModels godoc
-// @Summary      Обновить модели AI
-// @Description  Запускает процесс обновления весов для выбранных ID моделей
-// @Tags         Model Management
-// @Accept       json
-// @Produce      json
-// @Param        request body requests.UpdateModelsRequest true "Список ID моделей"
-// @Success      200  {object}  map[string]interface{}
-// @Failure      400  {object}  map[string]string
-// @Security     BearerAuth
-// @Router       /ai/models/update [post]
-func (h *AIHandler) UpdateModels(c *gin.Context) {
-	var request requests.UpdateModelsRequest
-
-	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Обновляем модели
-	results, err := h.aiService.UpdateModels(c, request.ModelIDs)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Models update initiated",
-		"results": results,
-	})
-}
-
-// TrainModel godoc
-// @Summary      Обучить модель
-// @Description  Создает задачу на обучение конкретной модели на основе указанного датасета
-// @Tags         Model Management
-// @Accept       json
-// @Produce      json
-// @Param        request body requests.TrainModelRequest true "Параметры обучения"
-// @Success      200  {object}  map[string]string "ID задачи на обучение"
-// @Failure      400  {object}  map[string]string
-// @Security     BearerAuth
-// @Router       /ai/models/train [post]
-func (h *AIHandler) TrainModel(c *gin.Context) {
-	var request requests.TrainModelRequest
-
-	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Запускаем обучение
-	jobID, err := h.aiService.TrainModel(c, request.ModelID, request.DatasetPath, request.Epochs)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Training job started",
-		"jobId":   jobID,
-	})
-}
-
-// ListModels godoc
-// @Summary      Список всех моделей
-// @Description  Возвращает список доступных AI моделей, опционально фильтруя по типу
-// @Tags         Model Management
-// @Produce      json
-// @Param        type  query  string  false  "Тип модели"
-// @Success      200  {array}   map[string]interface{}
-// @Failure      500  {object}  map[string]string
-// @Security     BearerAuth
-// @Router       /ai/models [get]
-func (h *AIHandler) ListModels(c *gin.Context) {
-	// Получаем параметры запроса
-	modelType := c.Query("type")
-
-	// Получаем список моделей
-	models, err := h.aiService.ListModels(c, modelType)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, models)
 }
 
 // GetPatternStats godoc

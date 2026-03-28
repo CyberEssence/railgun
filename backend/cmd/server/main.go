@@ -87,10 +87,13 @@ func main() {
 	userRepo := repository.NewUserRepository(db)
 	incidentRepo := repository.NewIncidentRepository(db)
 	agentRepo := repository.NewAgentRepository(db)
+	analysisRepo := repository.NewAnalysisRepository(db)
+
 	detEngine := engine.NewDetector(cfg.Detection, incidentRepo)
 
 	// Инициализация сервисов
-	aiService := services.NewAIService(db)
+
+	aiService := services.NewAIService(analysisRepo)
 	integrationService := services.NewIntegrationService(services.IntegrationConfig{
 		VirusTotalAPIKey: cfg.VirusTotal.VirusTotalAPIKey,
 		MaxFileSize:      cfg.VirusTotal.MaxFileSizeMB,

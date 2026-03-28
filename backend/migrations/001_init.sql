@@ -186,6 +186,21 @@ CREATE TABLE isolation_tasks (
     output TEXT -- Лог выполнения (успех/ошибка)
 );
 
+CREATE TABLE IF NOT EXISTS analysis_results (
+    id BIGSERIAL PRIMARY KEY,
+    host_id VARCHAR(64),
+    input_data TEXT,
+    predict_label VARCHAR(128),
+    score DECIMAL(10, 4),
+    is_malicious BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Индексы для быстрого поиска по истории анализов
+CREATE INDEX idx_analysis_results_host_id ON analysis_results(host_id);
+CREATE INDEX idx_analysis_results_malicious ON analysis_results(is_malicious);
+CREATE INDEX idx_analysis_results_created_at ON analysis_results(created_at);
+
 -- Функция обновления updated_at
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
