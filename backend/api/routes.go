@@ -87,13 +87,13 @@ func RegisterRoutes(
 
 		// AI и анализ
 		apiGroup.POST("/ai/analyze", aiHandler.AnalyzeRealtime)
-		/*apiGroup.GET("/ai/patterns", aiHandler.GetAttackPatterns)
-		apiGroup.GET("/ai/patterns/stats", aiHandler.GetPatternStats)
-		apiGroup.POST("/ai/counter-attack", aiHandler.ExecuteCounterAttack)
+		//apiGroup.GET("/ai/patterns", aiHandler.GetAttackPatterns)
+		//apiGroup.GET("/ai/patterns/stats", aiHandler.GetPatternStats)
+		//apiGroup.POST("/ai/counter-attack", aiHandler.ExecuteCounterAttack)
 		apiGroup.GET("/ai/apt-timeline", aiHandler.GetAPTTimeline)
-		apiGroup.POST("/ai/models/update", aiHandler.UpdateModels)
-		apiGroup.POST("/ai/models/train", aiHandler.TrainModel)
-		apiGroup.GET("/ai/models", aiHandler.ListModels)*/
+		//apiGroup.POST("/ai/models/update", aiHandler.UpdateModels)
+		//apiGroup.POST("/ai/models/train", aiHandler.TrainModel)
+		//apiGroup.GET("/ai/models", aiHandler.ListModels)
 
 		// Интеграции
 		apiGroup.POST("/integration/scan", integrationHandler.ScanFile)

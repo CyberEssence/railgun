@@ -19,12 +19,14 @@ import (
 
 type AIService struct {
 	analysisRepo     domain.AnalysisRepository
+	timelineRepo     domain.TimelineRepository
 	cybertServiceURL string
 }
 
-func NewAIService(repo domain.AnalysisRepository) *AIService {
+func NewAIService(repo domain.AnalysisRepository, timelineRepo domain.TimelineRepository) *AIService {
 	return &AIService{
 		analysisRepo:     repo,
+		timelineRepo:     timelineRepo,
 		cybertServiceURL: "http://host.docker.internal:8001/analyze",
 	}
 }
@@ -57,6 +59,28 @@ func (s *AIService) AnalyzeAndSave(ctx context.Context, logLines []string, hostI
 	}
 
 	return results, nil
+}
+
+func (s *AIService) GetAPTTimeline(ctx context.Context, hostID string, start, end time.Time) (*models.APTTimelineResponse, error) {
+	// Достаем данные из ES через репозиторий
+	events, err := s.timelineRepo.GetHostTimeline(ctx, hostID, start, end)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(events) == 0 {
+		return &models.APTTimelineResponse{HostID: hostID}, nil
+	}
+
+	// Формируем ответ
+	response := &models.APTTimelineResponse{
+		HostID:    hostID,
+		StartTime: start.Format(time.RFC3339),
+		EndTime:   end.Format(time.RFC3339),
+		Events:    events,
+	}
+
+	return response, nil
 }
 
 func (s *AIService) callCybert(ctx context.Context, logLine string) (map[string]interface{}, error) {

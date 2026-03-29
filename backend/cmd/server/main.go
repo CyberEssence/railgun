@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/elastic/go-elasticsearch/v8"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/uptrace/bun"
@@ -91,9 +92,16 @@ func main() {
 
 	detEngine := engine.NewDetector(cfg.Detection, incidentRepo)
 
-	// Инициализация сервисов
+	esClient, err := elasticsearch.NewClient(elasticsearch.Config{
+		Addresses: []string{cfg.Elastic.URL},
+	})
+	if err != nil {
+		log.Fatal("Failed to create ES client for timeline: ", err)
+	}
+	timelineRepo := repository.NewESTimelineRepository(esClient, "railgun-logs-*")
 
-	aiService := services.NewAIService(analysisRepo)
+	// Инициализация сервисов
+	aiService := services.NewAIService(analysisRepo, timelineRepo)
 	integrationService := services.NewIntegrationService(services.IntegrationConfig{
 		VirusTotalAPIKey: cfg.VirusTotal.VirusTotalAPIKey,
 		MaxFileSize:      cfg.VirusTotal.MaxFileSizeMB,

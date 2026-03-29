@@ -281,13 +281,6 @@ type APTTimeline struct {
 	Events []APTEpoch `json:"events"`
 }
 
-// APTEpoch эпоха в временной шкале APT
-type APTEpoch struct {
-	Timestamp int64  `json:"timestamp"`
-	Stage     string `json:"stage"`
-	Indicator string `json:"indicator"`
-}
-
 // DashboardStats статистика для дашборда
 type DashboardStats struct {
 	TotalEvents        int    `json:"totalEvents"`
@@ -348,6 +341,21 @@ type Artifact struct {
 	Timestamp   time.Time `json:"timestamp" bun:"timestamp"`
 	ThreatLevel int       `json:"threat_level" bun:"threat_level"`
 	Content     []byte    `json:"content,omitempty" bun:"content,omitempty"`
+}
+
+type APTEpoch struct {
+	Timestamp int64   `json:"timestamp"`
+	Stage     string  `json:"stage"`     // Например: "Initial Access", "Privilege Escalation"
+	Indicator string  `json:"indicator"` // Суть события (IP, файл, ошибка)
+	RiskScore float64 `json:"risk_score"`
+}
+
+type APTTimelineResponse struct {
+	HostID    string     `json:"host_id"`
+	StartTime string     `json:"start_time"`
+	EndTime   string     `json:"end_time"`
+	Events    []APTEpoch `json:"events"`
+	Summary   string     `json:"summary,omitempty"` // Задел под Вариант 2 (AI текст)
 }
 
 type ThreatStats struct {

@@ -39,6 +39,51 @@ func (h *AIHandler) AnalyzeRealtime(c *gin.Context) {
 	})
 }
 
+// @Summary      Временная шкала APT
+// @Description  Получает хронологию сложных устойчивых угроз (APT) для конкретного хоста на основе данных из Elasticsearch
+// @Tags         AI Analysis
+// @Produce      json
+// @Param        host_id  query  string  true   "ID хоста"
+// @Param        from     query  string  false  "Начало периода (RFC3339)"
+// @Param        to       query  string  false  "Конец периода (RFC3339)"
+// @Success      200  {object}  models.APTTimelineResponse
+// @Failure      400  {object}  map[string]string
+// @Security     BearerAuth
+// @Router       /ai/apt-timeline [get]
+func (h *AIHandler) GetAPTTimeline(c *gin.Context) {
+	// Используем snake_case в query, как указано в Swagger
+	hostID := c.Query("host_id")
+	if hostID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Host ID is required"})
+		return
+	}
+
+	// Парсим время
+	fromStr := c.DefaultQuery("from", time.Now().Add(-30*24*time.Hour).Format(time.RFC3339))
+	toStr := c.DefaultQuery("to", time.Now().Format(time.RFC3339))
+
+	from, err := time.Parse(time.RFC3339, fromStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid 'from' format, use RFC3339"})
+		return
+	}
+
+	to, err := time.Parse(time.RFC3339, toStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid 'to' format, use RFC3339"})
+		return
+	}
+
+	// ВАЖНО: передаем c.Request.Context(), а не просто c
+	timeline, err := h.aiService.GetAPTTimeline(c.Request.Context(), hostID, from, to)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, timeline)
+}
+
 // ExecuteCounterAttack godoc
 // @Summary      Запустить контратаку
 // @Description  Инициирует защитные действия против указанного IP адреса

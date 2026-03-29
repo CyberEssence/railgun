@@ -31,6 +31,10 @@ type NetworkLogRepository interface {
 	ProcessNetworkLog(ctx context.Context, hostID, logData, logType string) ([]models.NetworkLog, error)
 }
 
+type TimelineRepository interface {
+	GetHostTimeline(ctx context.Context, hostID string, start, end time.Time) ([]models.APTEpoch, error)
+}
+
 type AnalysisRepository interface {
 	Save(ctx context.Context, result *models.AnalysisResult) error
 }
@@ -61,6 +65,7 @@ type UserRepository interface {
 
 type AIService interface {
 	AnalyzeAndSave(ctx context.Context, logLines []string, hostID string) ([]*models.AnalysisResult, error)
+	GetAPTTimeline(ctx context.Context, hostID string, start, end time.Time) (*models.APTTimelineResponse, error)
 	//AnalyzeData(ctx context.Context, data []string, dataType, hostID string) (*models.AnalysisResult, error)
 	/*GetAttackPatterns(ctx context.Context, category, severity string, page, perPage int) ([]*models.AttackPattern, int, error)
 	GetAPTTimeline(ctx context.Context, aptID string, startTime time.Time, endTime time.Time) (*models.APTTimeline, error)
